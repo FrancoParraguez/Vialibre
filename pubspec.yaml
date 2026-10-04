@@ -1,0 +1,53 @@
+name: via_libre
+description: Plataforma de geolocalización en tiempo real con geofencing predictivo para optimizar tiempos de respuesta de vehículos de emergencia.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase
+  firebase_core: ^2.32.0
+  firebase_auth: ^4.20.0
+  cloud_firestore: ^4.17.5
+  firebase_messaging: ^14.9.4
+  firebase_database: ^10.5.7
+
+  # Mapas y geolocalización
+  google_maps_flutter: ^2.5.3
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
+
+  # Notificaciones locales (para mostrar alertas en foreground)
+  flutter_local_notifications: ^16.3.0
+
+  # Estado
+  provider: ^6.1.1
+
+  # Navegación
+  go_router: ^13.2.0
+
+  # Utilidades
+  http: ^1.2.1
+  equatable: ^2.0.5
+  uuid: ^4.3.3
+  intl: ^0.19.0
+
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  mockito: ^5.4.4
+  build_runner: ^2.4.8
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/

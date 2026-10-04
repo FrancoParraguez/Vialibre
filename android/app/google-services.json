@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "241758124993",
+    "project_id": "via-libre-38d87",
+    "storage_bucket": "via-libre-38d87.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:241758124993:android:6666af2f379234bcf88d40",
+        "android_client_info": {
+          "package_name": "com.example.via_libre"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHa3QSJrQKuXVljDoIn6ggQvkXjqPHzIU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
