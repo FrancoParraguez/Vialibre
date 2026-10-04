@@ -6,7 +6,7 @@ Plataforma movil de geolocalización en tiempo real con **geofencing predictivo*
 
 ## ¿Qué es Vía Libre?
 
-Vía Libre es una aplicación móvil y web desarrollada en Flutter que conecta a conductores particulares con vehículos de emergencia en tránsito. Cuando una ambulancia o carro de bomberos activa una emergencia, el sistema calcula en tiempo real un radio de alerta dinámico basado en la velocidad del vehículo de emergencia y la del conductor particular. Si el conductor particular se encuentra dentro de ese radio, recibe una alerta inmediata para que ceda el paso anticipadamente.
+Vía Libre es una aplicación móvil y web desarrollada en Flutter que conecta a conductores particulares con vehículos de emergencia en tránsito. Cuando una ambulancia o carro de bomberos activa una alerta preventiva, el sistema calcula en tiempo real un radio de alerta dinámico basado en la velocidad del vehículo de emergencia y la del conductor particular. Si el conductor particular se encuentra dentro de ese radio, recibe una alerta inmediata para que ceda el paso anticipadamente.
 
 El objetivo es reducir los tiempos de respuesta eliminando la reacción tardía al escuchar una sirena, dándole al conductor unos segundos de anticipación para reaccionar de forma segura.
 
@@ -20,9 +20,7 @@ El objetivo es reducir los tiempos de respuesta eliminando la reacción tardía 
 - Overlay de alerta con información del vehículo (tipo, distancia aproximada)
 
 ### Conductor de emergencia
-- Activación y desactivación del modo emergencia con un botón de acción flotante
-- Transmisión de ubicación en tiempo real al activar emergencia
-- Panel de métricas en vivo: velocidad actual, radio de alerta calculado y cantidad de conductores alertados
+- Transmisión de ubicación en tiempo real al trazar una ruta de emergencia
 - El radio de alerta se ajusta automáticamente según la velocidad del vehículo
 
 ### Panel de administración (web)
@@ -164,16 +162,6 @@ flutter run -d chrome   # Web (panel admin)
 flutter run             # Android/iOS (app conductores)
 ```
 
-### Primer administrador
-
-1. Registra una cuenta normal desde la app
-2. Ve a Firebase Console → Firestore → colección `users`
-3. Edita tu documento y establece:
-   - `rol` → `"admin"`
-   - `institucion_id` → ej: `"bomberos-valparaiso"`
-4. Cierra sesión y vuelve a entrar — el sistema te redirigirá al panel de administración
-
----
 
 ## Flujo operativo
 
