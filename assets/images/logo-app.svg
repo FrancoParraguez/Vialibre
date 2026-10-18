@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Fondo redondeado con el color primary -->
+  <rect width="512" height="512" rx="120" fill="#12355B" />
+  
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Ondas concéntricas (radio de alerta dinámico) -->
+    <!-- Onda exterior -->
+    <path d="M 140 256 A 116 116 0 0 1 372 256" stroke="#2F6FDE" stroke-width="20" stroke-dasharray="80 30" />
+    <!-- Onda media -->
+    <path d="M 180 256 A 76 76 0 0 1 332 256" stroke="#4C8DDB" stroke-width="18" stroke-dasharray="50 20" />
+    <!-- Onda interna -->
+    <path d="M 220 256 A 36 36 0 0 1 292 256" stroke="#FFFFFF" stroke-width="14" stroke-opacity="0.8" />
+  </g>
+
+  <!-- Corredor despejado / Flecha vector tech hacia adelante -->
+  <path d="M 256 120 L 324 250 L 276 235 L 290 392 L 222 392 L 236 235 L 188 250 Z" fill="#FFFFFF" />
+  
+  <!-- Detalle dinámico en el centro de la flecha -->
+  <path d="M 256 160 L 285 242 L 262 232 L 262 380 L 250 380 L 250 232 L 227 242 Z" fill="#2F6FDE" opacity="0.3" />
+</svg>

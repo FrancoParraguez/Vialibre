@@ -61,6 +61,13 @@ class AppConstants {
   /// Versión actual del aviso de privacidad. Incrementar cuando se actualice el texto.
   static const int privacyNoticeCurrentVersion = 1;
   static const String routePrivacyNotice = '/privacy-notice';
+
+  // ── Modo sin destino fijo (spec modo-emergencia-sin-destino) ──
+  static const String openRouteModeLabel    = 'Modo sin destino fijo';
+  static const String openRouteModeHint     = 'No se conoce el punto exacto de la emergencia. '
+                                              'Se transmite tu posición en tiempo real.';
+  static const String openRouteModeIndicator = 'Ubicación no exacta del incidente';
+  static const String openRouteModeButton   = 'Sin destino fijo';
 }
 
 // AppColors fue migrado a lib/core/theme/app_colors.dart (sistema "Pulso").

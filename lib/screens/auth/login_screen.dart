@@ -3,6 +3,7 @@
 // ancho máximo 440 dp, campos con borde visible del tema.
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
 import '../../core/theme/app_colors.dart';
@@ -89,22 +90,15 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Logo: cuadro 80x80 primary con radio 20 e ícono blanco
-                  Container(
-                    width: 80, height: 80,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Icon(Icons.emergency,
-                        color: AppColors.onPrimary, size: 44),
+                  // Logo de la app desde el SVG de diseño
+                  SvgPicture.asset(
+                    'assets/images/logo-app.svg',
+                    width: 96,
+                    height: 96,
                   ),
                   const SizedBox(height: 16),
-                  Text(AppConstants.appName,
-                      style: tt.headlineMedium
-                          ?.copyWith(color: AppColors.primary)),
-                  const SizedBox(height: 4),
-                  Text('Alertas preventivas para todos',
+                  Text('Via Libre: Una ruta libre en cada emergencia',
+                      textAlign: TextAlign.center,
                       style: tt.bodyMedium),
                   const SizedBox(height: 40),
 

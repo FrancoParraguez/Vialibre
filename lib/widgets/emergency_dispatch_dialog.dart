@@ -1,20 +1,21 @@
 // lib/widgets/emergency_dispatch_dialog.dart
 // Modal/bottom-sheet de configuración de misión de emergencia.
 // Permite seleccionar un destino (con autocompletado o toque en mapa)
-// o activar el modo "Patrullaje / Sin destino fijo".
+// o activar el modo sin destino fijo (spec modo-emergencia-sin-destino).
 //
 // TASK-01 del spec task2.md.
 
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../core/constants.dart';
 import '../core/theme/app_colors.dart';
 import '../services/place_search_service.dart';
 import '../services/permission_service.dart';
 
 /// Resultado del diálogo de despacho.
 class DispatchResult {
-  /// `true` si se eligió un destino fijo, `false` si es patrullaje sin destino.
+  /// `true` si se eligió un destino fijo, `false` si es modo sin destino fijo.
   final bool hasFixedDestination;
 
   /// Coordenada del destino seleccionado (null si sin destino fijo).
@@ -250,7 +251,7 @@ class _EmergencyDispatchDialogState extends State<EmergencyDispatchDialog> {
           Text('Configurar despacho', style: tt.titleLarge),
           const SizedBox(height: 4),
           Text(
-            'Selecciona el destino o inicia patrullaje sin punto fijo.',
+            'Selecciona el destino o inicia en ${AppConstants.openRouteModeLabel}.',
             style: tt.bodyMedium?.copyWith(color: AppColors.textSecondary),
           ),
 
@@ -425,14 +426,30 @@ class _EmergencyDispatchDialogState extends State<EmergencyDispatchDialog> {
           OutlinedButton.icon(
             onPressed: _confirmSinDestino,
             icon: const Icon(Icons.navigation_outlined),
-            label: const Text(
-              'Patrullaje / Sin destino fijo',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            label: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  AppConstants.openRouteModeLabel,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  AppConstants.openRouteModeHint,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
             ),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.primary,
               side: const BorderSide(color: AppColors.primary, width: 1.5),
-              minimumSize: const Size.fromHeight(48),
+              minimumSize: const Size.fromHeight(60),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),

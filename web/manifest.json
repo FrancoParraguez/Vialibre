@@ -1,11 +1,11 @@
 {
-    "name": "via_libre",
-    "short_name": "via_libre",
+    "name": "Vía Libre",
+    "short_name": "Vía Libre",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#12355B",
+    "theme_color": "#12355B",
+    "description": "Alertas preventivas de geofencing para vehículos de emergencia.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

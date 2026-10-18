@@ -27,6 +27,7 @@ import '../../services/permission_service.dart';
 import '../../services/directions_routing_service.dart';
 import '../../widgets/emergency_fab.dart';
 import '../../widgets/emergency_dispatch_dialog.dart';
+import '../../services/driver_profile_repository.dart';
 
 // ── Enum de estados de la baliza (TASK-02) ────────────────────────
 enum EmergencyState {
@@ -52,12 +53,17 @@ class _EmergencyScreenState extends State<EmergencyScreen>
   final _locationSvc = LocationService();
   final _permissionSvc = PermissionService();
   final _routingSvc    = DirectionsRoutingService();
+  final _profileRepo   = DriverProfileRepository();
   final _firestore   = FirebaseFirestore.instance;
   final _rtdb        = FirebaseDatabase.instance;
 
   GoogleMapController? _mapCtrl;
   UserModel? _user;
   VehicleModel? _vehicle;
+
+  // ── Perfil del conductor (menú AppBar, task 2.3) ──────────────
+  DriverProfileInfo? _perfil;
+  StreamSubscription<DriverProfileInfo>? _perfilSub;
 
   // ── Estado de la baliza ───────────────────────────────────────
   EmergencyState _state = EmergencyState.idle;
@@ -123,6 +129,11 @@ class _EmergencyScreenState extends State<EmergencyScreen>
     if (vehicleSnap.docs.isNotEmpty) {
       _vehicle = VehicleModel.fromMap(vehicleSnap.docs.first.data());
     }
+
+    // Suscribir perfil del conductor en tiempo real (task 2.2)
+    _perfilSub = _profileRepo.watchProfile(_user!.uid).listen((p) {
+      if (mounted) setState(() => _perfil = p);
+    });
 
     // Verificar estado de notificaciones
     _notificationsEnabled = await _permissionSvc.hasNotificationPermission;
@@ -390,8 +401,8 @@ class _EmergencyScreenState extends State<EmergencyScreen>
 
   void _showFallbackSnackBar([String? reason]) {
     final msg = reason != null && reason.isNotEmpty
-        ? 'No se pudo calcular la ruta ($reason). Iniciando en modo patrullaje.'
-        : 'No se pudo calcular la ruta. Iniciando en modo patrullaje.';
+        ? 'No se pudo calcular la ruta ($reason). Iniciando en ${AppConstants.openRouteModeLabel}.'
+        : 'No se pudo calcular la ruta. Iniciando en ${AppConstants.openRouteModeLabel}.';
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
@@ -678,6 +689,41 @@ class _EmergencyScreenState extends State<EmergencyScreen>
     }
   }
 
+  // ── Helper: fila del menú de perfil (task 2.3) ────────────────
+  Widget _buildProfileRow({
+    required IconData icon,
+    required String label,
+    required String valor,
+    bool sinVehiculo = false,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 16,
+            color: sinVehiculo ? AppColors.textDisabled : AppColors.accent),
+        const SizedBox(width: 8),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 11, color: AppColors.textSecondary)),
+            Text(
+              valor,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: sinVehiculo
+                    ? AppColors.textDisabled
+                    : AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   // ── UI ─────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -707,10 +753,91 @@ class _EmergencyScreenState extends State<EmergencyScreen>
           style: TextStyle(fontWeight: FontWeight.w800, color: appBarFg),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            color: appBarFg,
-            onPressed: _logout,
+          // ── Menú del conductor (task 2.3) ──────────────────────
+          PopupMenuButton<String>(
+            icon: Icon(Icons.account_circle_outlined, color: appBarFg),
+            tooltip: 'Datos del conductor',
+            color: AppColors.surface,
+            onSelected: (value) {
+              if (value == 'logout') _logout();
+            },
+            itemBuilder: (_) => [
+              // ── Encabezado: nombre del conductor ──────────────
+              PopupMenuItem<String>(
+                enabled: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.person, size: 16,
+                            color: AppColors.accent),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Conductor',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _perfil?.nombreConductor.isNotEmpty == true
+                          ? _perfil!.nombreConductor
+                          : _user?.nombre ?? '—',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const Divider(height: 16),
+                  ],
+                ),
+              ),
+              // ── Tipo de vehículo ───────────────────────────────
+              PopupMenuItem<String>(
+                enabled: false,
+                child: _buildProfileRow(
+                  icon: Icons.directions_car,
+                  label: 'Tipo de vehículo',
+                  valor: _perfil?.tieneVehiculo == true
+                      ? _perfil!.tipoVehiculo ?? '—'
+                      : 'Sin vehículo asignado',
+                  sinVehiculo: _perfil?.tieneVehiculo == false,
+                ),
+              ),
+              // ── Patente ────────────────────────────────────────
+              PopupMenuItem<String>(
+                enabled: false,
+                child: _buildProfileRow(
+                  icon: Icons.badge_outlined,
+                  label: 'Patente',
+                  valor: _perfil?.tieneVehiculo == true
+                      ? _perfil!.patenteFormateada
+                      : '—',
+                  sinVehiculo: _perfil?.tieneVehiculo == false,
+                ),
+              ),
+              const PopupMenuDivider(),
+              // ── Cerrar sesión ──────────────────────────────────
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, size: 18, color: AppColors.error),
+                    SizedBox(width: 10),
+                    Text(
+                      'Cerrar sesión',
+                      style: TextStyle(color: AppColors.error),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -819,7 +946,42 @@ class _EmergencyScreenState extends State<EmergencyScreen>
               top: 12,
               left: 12,
               right: 12,
-              child: _buildMetricsCard(tt),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildMetricsCard(tt),
+                  // ── Indicador de modo sin destino fijo (task 1.4) ──
+                  if (!_hasFixedDestination) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.info.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.info.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.info_outline,
+                              color: AppColors.info, size: 14),
+                          const SizedBox(width: 6),
+                          Text(
+                            AppConstants.openRouteModeIndicator,
+                            style: tt.bodySmall?.copyWith(
+                              color: AppColors.info,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
 
           // ── Panel inferior ─────────────────────────────────────
@@ -935,7 +1097,9 @@ class _EmergencyScreenState extends State<EmergencyScreen>
               icono: _hasFixedDestination
                   ? Icons.flag
                   : Icons.navigation_outlined,
-              valor: _hasFixedDestination ? 'Con destino' : 'Patrullaje',
+              valor: _hasFixedDestination
+                  ? 'Con destino'
+                  : AppConstants.openRouteModeLabel,
               etiqueta: 'Modo',
               color: _hasFixedDestination ? AppColors.accent : AppColors.info,
               labelStyle: tt.bodySmall,
@@ -951,6 +1115,7 @@ class _EmergencyScreenState extends State<EmergencyScreen>
     WidgetsBinding.instance.removeObserver(this);
     _posSub?.cancel();
     _alertCountSub?.cancel();
+    _perfilSub?.cancel();
     _locationSvc.dispose();
     _mapCtrl?.dispose();
     super.dispose();
