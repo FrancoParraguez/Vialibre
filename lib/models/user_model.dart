@@ -12,6 +12,8 @@ class UserModel extends Equatable {
   final String? institucionId;
   final bool activo;
   final DateTime createdAt;
+  final int? privacyNoticeVersion;
+  final DateTime? privacyNoticeAckAt;
 
   const UserModel({
     required this.uid,
@@ -21,6 +23,8 @@ class UserModel extends Equatable {
     this.institucionId,
     this.activo = true,
     required this.createdAt,
+    this.privacyNoticeVersion,
+    this.privacyNoticeAckAt,
   });
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
@@ -35,6 +39,10 @@ class UserModel extends Equatable {
       institucionId: map['institucion_id'] as String?,
       activo: map['activo'] as bool? ?? true,
       createdAt: DateTime.parse(map['created_at'] as String),
+      privacyNoticeVersion: map['privacy_notice_version'] as int?,
+      privacyNoticeAckAt: map['privacy_notice_ack_at'] != null
+          ? DateTime.parse(map['privacy_notice_ack_at'] as String)
+          : null,
     );
   }
 
@@ -46,6 +54,10 @@ class UserModel extends Equatable {
     'institucion_id': institucionId,
     'activo': activo,
     'created_at': createdAt.toIso8601String(),
+    if (privacyNoticeVersion != null)
+      'privacy_notice_version': privacyNoticeVersion,
+    if (privacyNoticeAckAt != null)
+      'privacy_notice_ack_at': privacyNoticeAckAt!.toIso8601String(),
   };
 
   UserModel copyWith({
@@ -56,6 +68,8 @@ class UserModel extends Equatable {
     String? institucionId,
     bool? activo,
     DateTime? createdAt,
+    int? privacyNoticeVersion,
+    DateTime? privacyNoticeAckAt,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -65,9 +79,21 @@ class UserModel extends Equatable {
       institucionId: institucionId ?? this.institucionId,
       activo: activo ?? this.activo,
       createdAt: createdAt ?? this.createdAt,
+      privacyNoticeVersion: privacyNoticeVersion ?? this.privacyNoticeVersion,
+      privacyNoticeAckAt: privacyNoticeAckAt ?? this.privacyNoticeAckAt,
     );
   }
 
   @override
-  List<Object?> get props => [uid, nombre, email, rol, institucionId, activo, createdAt];
+  List<Object?> get props => [
+        uid,
+        nombre,
+        email,
+        rol,
+        institucionId,
+        activo,
+        createdAt,
+        privacyNoticeVersion,
+        privacyNoticeAckAt,
+      ];
 }

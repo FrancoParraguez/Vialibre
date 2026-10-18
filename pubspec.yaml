@@ -23,7 +23,13 @@ dependencies:
   geocoding: ^2.1.1
 
   # Notificaciones locales (para mostrar alertas en foreground)
-  flutter_local_notifications: ^16.3.0
+  flutter_local_notifications: ^17.2.3
+
+  # Permisos
+  permission_handler: ^11.3.1
+
+  # Servicio en primer plano (baliza persistente)
+  flutter_foreground_task: ^8.10.0
 
   # Estado
   provider: ^6.1.1
@@ -36,6 +42,7 @@ dependencies:
   equatable: ^2.0.5
   uuid: ^4.3.3
   intl: ^0.19.0
+  shared_preferences: ^2.2.3
 
   cupertino_icons: ^1.0.6
 

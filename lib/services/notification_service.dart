@@ -7,6 +7,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../core/theme/app_colors.dart';
 import '../core/constants.dart';
 
 // Handler para mensajes en background (debe ser top-level function)
@@ -124,7 +125,7 @@ class NotificationService {
         enableVibration: true,
         fullScreenIntent: true, // muestra en pantalla aunque esté bloqueada
         icon: '@mipmap/ic_launcher',
-        color: Color(0xFFD32F2F), // rojo emergencia
+        color: AppColors.alertCritical, // alertCritical del spec Pulso
       ),
       iOS: DarwinNotificationDetails(
         presentAlert: true,

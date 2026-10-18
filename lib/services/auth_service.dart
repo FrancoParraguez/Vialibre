@@ -149,12 +149,16 @@ class AuthService {
         .update({'conductor_asignado_uid': conductorUid});
   }
 
-  // ── Activar / desactivar conductor ────────────────────────────
+  // ── Activar / desactivar conductor (soft-delete) ─────────────
+  // TASK-04: siempre incluye updated_at para auditoría
   Future<void> setConductorActivo(String uid, bool activo) async {
     await _firestore
         .collection(AppConstants.colUsers)
         .doc(uid)
-        .update({'activo': activo});
+        .update({
+      'activo': activo,
+      'updated_at': FieldValue.serverTimestamp(),
+    });
   }
 
   // ── Eliminar conductor de Firestore (no borra Auth) ───────────

@@ -8,13 +8,19 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/constants.dart';
+import '../../core/theme/app_colors.dart';
 import '../../services/auth_service.dart';
 import '../../services/location_service.dart';
 import '../../services/geofencing_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/monitoring_controller.dart';
+import '../../services/permission_status_service.dart';
+import '../../services/permission_service.dart';
+import '../../services/readiness_state.dart';
 import '../../models/user_model.dart';
 import '../../models/location_model.dart';
 import '../../widgets/alert_overlay.dart';
+import '../../widgets/permission_status_panel.dart';
 import 'package:go_router/go_router.dart';
 
 class HomeParticularScreen extends StatefulWidget {
@@ -30,26 +36,38 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
   final _geofenceSvc = GeofencingService();
   final _notifSvc    = NotificationService();
 
+  // ── Nuevos: MonitoringController y PermissionStatusService ────
+  late final MonitoringController _monitoringCtrl;
+  late final PermissionStatusService _permissionStatusSvc;
+
+  ReadinessState _readiness = ReadinessState.unknown;
+  StreamSubscription<ReadinessState>? _readinessSub;
+
+  // ── Mapa ──────────────────────────────────────────────────────
   GoogleMapController? _mapCtrl;
   UserModel? _user;
 
-  // Estado de ubicación propia
-  LatLng? _miUbicacion;
-  double  _miVelocidadKmh = 0;
+  LatLng?  _miUbicacion;
+  double   _miVelocidadKmh = 0;
 
-  // Estado de alerta
-  bool   _alertaActiva = false;
+  // ── Estado de alerta (alimentado por MonitoringController) ────
+  bool    _alertaActiva = false;
   double? _distanciaAlerta;
   double? _radioAlerta;
+  AlertLevel _nivelAlerta = AlertLevel.anticipation;
 
-  // Marcadores activos en el mapa
   final Map<String, Marker> _markers = {};
 
+  // Suscripción al stream de marcadores de emergencia en el mapa
   StreamSubscription<GeofenceEvent>? _geofenceSub;
   StreamSubscription<List<String>>?  _emergencyIdsSub;
-  StreamSubscription<Position>?      _posSub;
 
-  // ── Ciclo de vida ─────────────────────────────────────────────
+  // Suscripción al stream de estados del MonitoringController
+  StreamSubscription<MonitoringState>? _monitoringStateSub;
+
+  // Suscripción al positionStream para actualizar la cámara del mapa
+  StreamSubscription<Position>? _mapPosSub;
+
   @override
   void initState() {
     super.initState();
@@ -57,59 +75,98 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
   }
 
   Future<void> _init() async {
-    // Cargar usuario actual
     final firebaseUser = _authSvc.currentUser;
     if (firebaseUser == null) return;
     _user = await _authSvc.getUserById(firebaseUser.uid);
 
-    // Inicializar notificaciones
     await _notifSvc.initialize();
     await _notifSvc.saveTokenToFirestore(_user!.uid);
 
-    // Solicitar permisos y empezar a publicar ubicación
-    final ok = await _locationSvc.requestPermissions();
-    if (!ok) {
-      _showPermissionDialog();
-      return;
-    }
+    // ── Inicializar PermissionStatusService y MonitoringController ──
+    _permissionStatusSvc = PermissionStatusService();
+    _monitoringCtrl = MonitoringController(
+      _locationSvc,
+      _geofenceSvc,
+      _notifSvc,
+      _permissionStatusSvc,
+    );
 
-    await _locationSvc.startPublishingLocation(_user!.uid);
+    // Escuchar cambios de readiness para actualizar la UI
+    _readinessSub = _permissionStatusSvc.readinessStream.listen((s) {
+      if (mounted) setState(() => _readiness = s);
+    });
+    _permissionStatusSvc.startWatching();
 
-    // Escuchar posición propia para actualizar mapa
-    _posSub = _locationSvc.positionStream.listen((pos) {
+    // Inicializar el controlador (evalúa permisos)
+    await _monitoringCtrl.initialize();
+
+    // Escuchar cambios de estado del monitoreo para refrescar la UI
+    _monitoringStateSub = _monitoringCtrl.stateStream.listen(_onMonitoringState);
+
+    // Suscribir al stream GPS solo para mover la cámara del mapa
+    // (el MonitoringController ya maneja la lógica de geofencing)
+    _mapPosSub = _locationSvc.positionStream.listen((pos) {
       final latLng = LatLng(pos.latitude, pos.longitude);
-      setState(() {
-        _miUbicacion     = latLng;
-        _miVelocidadKmh  = pos.speed * 3.6;
-      });
-      _mapCtrl?.animateCamera(CameraUpdate.newLatLng(latLng));
+      if (mounted) {
+        setState(() {
+          _miUbicacion    = latLng;
+          _miVelocidadKmh = pos.speed * 3.6;
+        });
+        _mapCtrl?.animateCamera(CameraUpdate.newLatLng(latLng));
+      }
     });
 
-    // Escuchar emergencias activas y suscribirse al geofence de cada una
+    // Suscribir al stream de emergencias para mostrar marcadores en el mapa
     _emergencyIdsSub = _geofenceSvc
         .watchActiveEmergencyVehicleIds()
         .listen(_onActiveEmergenciesChanged);
+
+    // Arrancar el monitoreo si los permisos ya están listos
+    if (_readiness.isReady) {
+      await _monitoringCtrl.startMonitoring();
+    }
   }
 
+  // ── Reacciona a cambios de estado del MonitoringController ────
+  void _onMonitoringState(MonitoringState monState) {
+    if (!mounted) return;
+    setState(() {
+      switch (monState) {
+        case MonitoringState.alertando:
+          _alertaActiva    = true;
+          _distanciaAlerta = _monitoringCtrl.distanciaActual;
+          _radioAlerta     = _monitoringCtrl.radioActual;
+          final esCritico  = _distanciaAlerta != null &&
+              _radioAlerta != null &&
+              _distanciaAlerta! <= _radioAlerta! * 0.3;
+          _nivelAlerta = esCritico ? AlertLevel.critical : AlertLevel.anticipation;
+
+        case MonitoringState.monitoreando:
+        case MonitoringState.listo:
+        case MonitoringState.sinPermisos:
+          _alertaActiva    = false;
+          _distanciaAlerta = null;
+          _radioAlerta     = null;
+          _nivelAlerta     = AlertLevel.anticipation;
+      }
+    });
+  }
+
+  // ── Markers de emergencia en el mapa (visual únicamente) ──────
   void _onActiveEmergenciesChanged(List<String> vehicleIds) {
     _geofenceSub?.cancel();
     if (vehicleIds.isEmpty) {
-      setState(() {
-        _alertaActiva = false;
-        _markers.removeWhere((key, _) => key.startsWith('emergency_'));
-      });
-      _notifSvc.cancelarAlertas();
+      if (mounted) {
+        setState(() => _markers.removeWhere((k, _) => k.startsWith('emergency_')));
+      }
       return;
     }
 
-    // Por simplicidad del MVP monitoreamos la primera emergencia activa.
-    // En producción se haría merge de múltiples streams.
     final vehicleId = vehicleIds.first;
-
     if (_miUbicacion == null) return;
 
     final particularLoc = LocationModel(
-      id: 'tmp',
+      id: 'map_tmp',
       ownerId: _user?.uid ?? '',
       lat: _miUbicacion!.latitude,
       lng: _miUbicacion!.longitude,
@@ -122,15 +179,16 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
           emergencyVehicleId: vehicleId,
           particularLocation: particularLoc,
         )
-        .listen(_onGeofenceEvent);
+        .listen(_onGeofenceMarker);
   }
 
-  void _onGeofenceEvent(GeofenceEvent event) {
-    // Actualizar marcador del vehículo de emergencia
+  /// Solo actualiza el marcador del mapa — no dispara alertas (eso lo hace el controller).
+  void _onGeofenceMarker(GeofenceEvent event) {
+    if (!mounted) return;
     if (event.emergencyLocation != null) {
-      final loc = event.emergencyLocation!;
+      final loc      = event.emergencyLocation!;
       final markerId = MarkerId('emergency_${loc.ownerId}');
-      final marker = Marker(
+      final marker   = Marker(
         markerId: markerId,
         position: LatLng(loc.lat, loc.lng),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
@@ -138,66 +196,119 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
       );
       setState(() => _markers[markerId.value] = marker);
     }
+  }
 
-    // Disparar o limpiar alerta
-    if (event.enRadio && !_alertaActiva) {
-      _notifSvc.mostrarAlertaEmergencia(
-        titulo: '🚨 Vía Libre — Emergencia cercana',
-        cuerpo: 'Vehículo de emergencia a ${event.distancia.toStringAsFixed(0)} m. Cede el paso.',
-      );
-    } else if (!event.enRadio && _alertaActiva) {
-      _notifSvc.cancelarAlertas();
+  // ── Solicitar permisos faltantes ──────────────────────────────
+  Future<void> _requestMissingPermissions() async {
+    if (!mounted) return;
+    final permSvc = PermissionService();
+    final result = await permSvc.requestAllPermissions(context);
+
+    if (!mounted) return;
+    switch (result) {
+      case PermissionResult.granted:
+        // Reinicializar el MonitoringController con los nuevos permisos
+        await _monitoringCtrl.initialize();
+        if (_monitoringCtrl.state == MonitoringState.listo) {
+          await _monitoringCtrl.startMonitoring();
+        }
+
+      case PermissionResult.locationGrantedNotificationsDenied:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ubicación concedida. Activa las notificaciones para alertas hands-free.'),
+          ),
+        );
+        await _monitoringCtrl.initialize();
+        if (_monitoringCtrl.state == MonitoringState.listo) {
+          await _monitoringCtrl.startMonitoring();
+        }
+
+      case PermissionResult.locationServiceDisabled:
+        await Geolocator.openLocationSettings();
+
+      case PermissionResult.locationPermanentlyDenied:
+        if (mounted) {
+          showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Permiso denegado permanentemente'),
+              content: const Text(
+                'Ve a Configuración > Permisos y activa la ubicación para Vía Libre.',
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await permSvc.openAppSettings();
+                  },
+                  child: const Text('Abrir ajustes'),
+                ),
+              ],
+            ),
+          );
+        }
+
+      case PermissionResult.locationDenied:
+        break; // usuario canceló el pre-prompt
     }
-
-    setState(() {
-      _alertaActiva     = event.enRadio;
-      _distanciaAlerta  = event.distancia;
-      _radioAlerta      = event.radio;
-    });
   }
 
   // ── Logout ────────────────────────────────────────────────────
   Future<void> _logout() async {
-    if (_user != null) {
-      await _locationSvc.stopPublishingLocation(_user!.uid);
-    }
+    _monitoringCtrl.stopMonitoring();
     await _authSvc.signOut();
     if (mounted) context.go(AppConstants.routeLogin);
   }
 
-  // ── UI ────────────────────────────────────────────────────────
+  // ── Build ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final initialPos = _miUbicacion ??
-        const LatLng(-33.0472, -71.6127); // Valparaíso por defecto
+    final tt = Theme.of(context).textTheme;
+
+    final initialPos = _miUbicacion ?? const LatLng(-33.0472, -71.6127);
+
+    final appBarBg = _alertaActiva ? _nivelAlerta.color  : AppColors.background;
+    final appBarFg = _alertaActiva ? _nivelAlerta.onColor : AppColors.primary;
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: appBarBg,
+        foregroundColor: appBarFg,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         title: Text(
-          _alertaActiva ? '🚨 EMERGENCIA CERCANA' : AppConstants.appName,
+          _alertaActiva
+              ? (_nivelAlerta == AlertLevel.critical
+                  ? '🚨 EMERGENCIA INMINENTE'
+                  : '⚠️ EMERGENCIA CERCANA')
+              : AppConstants.appName,
           style: TextStyle(
-            color: _alertaActiva ? Colors.white : null,
-            fontWeight: _alertaActiva ? FontWeight.w800 : null,
+            fontWeight: _alertaActiva ? FontWeight.w900 : FontWeight.w600,
+            color: appBarFg,
           ),
         ),
-        backgroundColor: _alertaActiva
-            ? const Color(AppColors.accentRed)
-            : const Color(AppColors.primaryBlue),
         actions: [
           if (_miVelocidadKmh > 0)
             Center(
               child: Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Chip(
-                  label: Text('${_miVelocidadKmh.toStringAsFixed(0)} km/h',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                  backgroundColor: Colors.white24,
-                  labelStyle: const TextStyle(color: Colors.white),
+                  label: Text(
+                    '${_miVelocidadKmh.toStringAsFixed(0)} km/h',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: appBarFg,
+                    ),
+                  ),
+                  backgroundColor: appBarFg.withValues(alpha: 0.15),
                 ),
               ),
             ),
           IconButton(
             icon: const Icon(Icons.logout),
+            color: appBarFg,
             tooltip: 'Cerrar sesión',
             onPressed: _logout,
           ),
@@ -205,56 +316,57 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
       ),
       body: Stack(
         children: [
-          // Mapa
           GoogleMap(
             onMapCreated: (ctrl) => _mapCtrl = ctrl,
-            initialCameraPosition: CameraPosition(
-              target: initialPos,
-              zoom: 15,
-            ),
+            initialCameraPosition: CameraPosition(target: initialPos, zoom: 15),
             myLocationEnabled: true,
             myLocationButtonEnabled: true,
             zoomControlsEnabled: false,
             markers: Set<Marker>.of(_markers.values),
           ),
 
-          // Overlay de alerta hands-free
           if (_alertaActiva)
             AlertOverlay(
               activo: _alertaActiva,
+              nivel: _nivelAlerta,
               distanciaMetros: _distanciaAlerta,
               radioMetros: _radioAlerta,
             ),
 
-          // Panel inferior de estado
+          // Panel de estado de permisos — siempre visible en la parte inferior
+          Positioned(
+            bottom: 80,
+            left: 16,
+            right: 16,
+            child: PermissionStatusPanel(
+              readiness: _readiness,
+              onRequestPermissions: _requestMissingPermissions,
+            ),
+          ),
+
           Positioned(
             bottom: 16,
             left: 16,
             right: 16,
-            child: _buildStatusCard(),
+            child: _buildStatusCard(tt),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildStatusCard() {
+  Widget _buildStatusCard(TextTheme tt) {
+    final dotColor  = _alertaActiva ? _nivelAlerta.color : AppColors.primary;
+    final iconColor = _alertaActiva ? _nivelAlerta.color : AppColors.primary;
+
     return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      elevation: 4,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: _alertaActiva
-                    ? const Color(AppColors.accentRed)
-                    : const Color(AppColors.successGreen),
-                shape: BoxShape.circle,
-              ),
+              width: 12, height: 12,
+              decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -264,20 +376,15 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
                 children: [
                   Text(
                     _alertaActiva ? 'Alerta activa' : 'Sin emergencias cercanas',
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                    style: tt.titleMedium,
                   ),
-                  Text(
-                    'Vigilancia en tiempo real activada',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
+                  Text('Vigilancia en tiempo real activada', style: tt.bodyMedium),
                 ],
               ),
             ),
             Icon(
-              _alertaActiva ? Icons.warning_amber_rounded : Icons.check_circle_outline,
-              color: _alertaActiva
-                  ? const Color(AppColors.accentRed)
-                  : const Color(AppColors.successGreen),
+              _alertaActiva ? _nivelAlerta.icon : Icons.check_circle_outline,
+              color: iconColor,
             ),
           ],
         ),
@@ -285,33 +392,16 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
     );
   }
 
-  void _showPermissionDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Permiso requerido'),
-        content: const Text(
-          'Vía Libre necesita acceso a tu ubicación para alertarte cuando haya un vehículo de emergencia cerca.',
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await Geolocator.openLocationSettings();
-            },
-            child: const Text('Abrir configuración'),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // ── dispose ───────────────────────────────────────────────────
   @override
   void dispose() {
-    _posSub?.cancel();
+    _readinessSub?.cancel();
+    _monitoringStateSub?.cancel();
+    _mapPosSub?.cancel();
     _geofenceSub?.cancel();
     _emergencyIdsSub?.cancel();
+    _permissionStatusSvc.stopWatching();
+    _monitoringCtrl.dispose();
     _locationSvc.dispose();
     _mapCtrl?.dispose();
     super.dispose();

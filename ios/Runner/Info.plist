@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Permiso de ubicación mientras se usa la app -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Necesitamos tu ubicación en tiempo real para que la central siga tu unidad durante la emergencia.</string>
+
+	<!-- Permiso de ubicación siempre (segundo plano) -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Para mantener la transmisión activa aunque minimices la app o bloquees la pantalla, necesitamos acceso a tu ubicación siempre.</string>
+
+	<!-- Modos de segundo plano: ubicación en background -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+	</array>
+</dict>
+</plist>

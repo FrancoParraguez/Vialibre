@@ -44,23 +44,24 @@ class AppConstants {
   static const String rtdbActiveEmergencies = 'active_emergencies';
   static const String rtdbActiveLocations   = 'active_locations';
 
+  // ── Google Maps / Directions API ──────────────────────────────
+  static const String googleMapsApiKey = 'AIzaSyBQNeft9P6O4-E4A0x5O1gIoCCHxt5JjpA';
+  static const String googleDirectionsUrl =
+      'https://maps.googleapis.com/maps/api/directions/json';
+  // Places API (New) — endpoints v1
+  static const String googlePlacesAutocompleteUrl =
+      'https://places.googleapis.com/v1/places:autocomplete';
+  static const String googlePlacesDetailsBaseUrl =
+      'https://places.googleapis.com/v1/places';
+
   // ── Misc ──────────────────────────────────────────────────────
   static const Duration splashDuration = Duration(seconds: 2);
+
+  // ── Privacidad ────────────────────────────────────────────────
+  /// Versión actual del aviso de privacidad. Incrementar cuando se actualice el texto.
+  static const int privacyNoticeCurrentVersion = 1;
+  static const String routePrivacyNotice = '/privacy-notice';
 }
 
-class AppColors {
-  AppColors._();
-
-  // Paleta principal
-  static const int _primaryValue = 0xFF1565C0;   // Azul institucional
-
-  // Brand
-  static const int primaryBlue   = 0xFF1565C0;
-  static const int accentRed     = 0xFFD32F2F;   // Modo emergencia activo
-  static const int alertOrange   = 0xFFE65100;   // Alerta activa
-  static const int successGreen  = 0xFF2E7D32;
-  static const int backgroundDark = 0xFF0D1B2A;  // Fondo modo oscuro / mapa
-  static const int surfaceLight  = 0xFFF5F7FA;
-  static const int textPrimary   = 0xFF1A1A2E;
-  static const int textSecondary = 0xFF5C6BC0;
-}
+// AppColors fue migrado a lib/core/theme/app_colors.dart (sistema "Pulso").
+// Importar desde allí: import 'package:vialibre/core/theme/app_colors.dart';

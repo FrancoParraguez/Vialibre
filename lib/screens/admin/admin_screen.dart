@@ -1,11 +1,13 @@
 // lib/screens/admin/admin_screen.dart
 // Panel de administración para gestión de flota institucional.
+// Colores: 100 % via AppColors tokens o Theme.of(context). Sin TextStyle(color:) en widgets.
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/constants.dart';
+import '../../core/theme/app_colors.dart';
 import '../../models/user_model.dart';
 import '../../models/vehicle_model.dart';
 import '../../services/auth_service.dart';
@@ -25,7 +27,6 @@ class _AdminScreenState extends State<AdminScreen>
   UserModel? _admin;
   late final TabController _tabController;
 
-  // Streams cacheados como broadcast para permitir múltiples listeners
   Stream<List<VehicleModel>>? _vehiculosStreamCache;
   Stream<List<UserModel>>? _conductoresStreamCache;
 
@@ -48,7 +49,6 @@ class _AdminScreenState extends State<AdminScreen>
     final user = await _authSvc.getUserById(fu.uid);
     setState(() {
       _admin = user;
-      // Inicializar streams broadcast una sola vez
       if (user.institucionId != null) {
         _vehiculosStreamCache = _firestore
             .collection(AppConstants.colVehicles)
@@ -66,7 +66,6 @@ class _AdminScreenState extends State<AdminScreen>
     });
   }
 
-  // ── Streams ───────────────────────────────────────────────────
   Stream<List<VehicleModel>> get _vehiculosStream =>
       _vehiculosStreamCache ?? Stream.value([]);
 
@@ -74,33 +73,18 @@ class _AdminScreenState extends State<AdminScreen>
       _conductoresStreamCache ?? Stream.value([]);
 
   // ── CRUD vehículos ────────────────────────────────────────────
-  Future<void> _agregarVehiculo(VehicleModel v) async {
-    await _firestore.collection(AppConstants.colVehicles).doc(v.id).set(v.toMap());
-  }
+  Future<void> _agregarVehiculo(VehicleModel v) async =>
+      _firestore.collection(AppConstants.colVehicles).doc(v.id).set(v.toMap());
 
-  Future<void> _toggleVehiculo(VehicleModel v) async {
-    await _firestore
-        .collection(AppConstants.colVehicles)
-        .doc(v.id)
-        .update({'activo': !v.activo});
-  }
+  // TASK-04: soft-delete con updated_at — sin hard delete
+  Future<void> _toggleVehiculo(VehicleModel v) async =>
+      _firestore.collection(AppConstants.colVehicles).doc(v.id).update({
+        'activo': !v.activo,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
 
-  Future<void> _eliminarVehiculo(VehicleModel v) async {
-    final ok = await _confirmDialog(
-      title: '¿Eliminar vehículo?',
-      content: 'Se eliminará permanentemente el vehículo ${v.patente}.',
-    );
-    if (ok) {
-      await _firestore.collection(AppConstants.colVehicles).doc(v.id).delete();
-    }
-  }
-
-  Future<void> _asignarConductor(VehicleModel v, String? conductorUid) async {
-    await _authSvc.asignarConductor(
-      vehiculoId: v.id,
-      conductorUid: conductorUid,
-    );
-  }
+  Future<void> _asignarConductor(VehicleModel v, String? uid) async =>
+      _authSvc.asignarConductor(vehiculoId: v.id, conductorUid: uid);
 
   void _showAsignarDialog(VehicleModel v, List<UserModel> conductores) {
     showDialog(
@@ -108,61 +92,26 @@ class _AdminScreenState extends State<AdminScreen>
       builder: (ctx) => _AsignarConductorDialog(
         vehiculo: v,
         conductores: conductores,
-        onAsignar: (conductorUid) async {
+        onAsignar: (uid) async {
           Navigator.pop(ctx);
-          await _asignarConductor(v, conductorUid);
+          await _asignarConductor(v, uid);
           if (mounted) {
-            final msg = conductorUid == null
-                ? 'Conductor desasignado de ${v.patente}.'
-                : 'Conductor asignado a ${v.patente}.';
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text(msg)));
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(uid == null
+                  ? 'Conductor desasignado de ${v.patente}.'
+                  : 'Conductor asignado a ${v.patente}.'),
+            ));
           }
         },
       ),
     );
   }
 
-  Future<void> _toggleConductor(UserModel c) async {
-    await _authSvc.setConductorActivo(c.uid, !c.activo);
-  }
-
-  Future<void> _eliminarConductor(UserModel c) async {
-    final ok = await _confirmDialog(
-      title: '¿Eliminar conductor?',
-      content: 'Se eliminará el perfil de ${c.nombre}. '
-          'La cuenta de Firebase Auth permanecerá inactiva.',
-    );
-    if (ok) {
-      await _authSvc.deleteConductor(c.uid);
-    }
-  }
+  // TASK-04: soft-delete con updated_at — sin hard delete
+  Future<void> _toggleConductor(UserModel c) async =>
+      _authSvc.setConductorActivo(c.uid, !c.activo);
 
   // ── Diálogos ──────────────────────────────────────────────────
-  Future<bool> _confirmDialog({
-    required String title,
-    required String content,
-  }) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title),
-        content: Text(content),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
-    );
-    return result == true;
-  }
 
   void _showAgregarVehiculoDialog() {
     showDialog(
@@ -194,8 +143,7 @@ class _AdminScreenState extends State<AdminScreen>
           try {
             if (_admin?.institucionId == null) {
               throw Exception(
-                'Tu cuenta de administrador no tiene una institución asignada. '
-                'Agrega el campo "institucion_id" en Firestore.',
+                'Tu cuenta de administrador no tiene una institución asignada.',
               );
             }
             final c = await _authSvc.createConductor(
@@ -213,11 +161,9 @@ class _AdminScreenState extends State<AdminScreen>
             // ignore: avoid_print
             print('ERROR createConductor: $e\n$stack');
             if (mounted) {
+              // Error de sistema: SnackBar con contenedor errorSoft + texto error
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(_parseError(e.toString())),
-                  backgroundColor: Colors.red,
-                ),
+                SnackBar(content: Text(_parseError(e.toString()))),
               );
             }
           }
@@ -241,12 +187,16 @@ class _AdminScreenState extends State<AdminScreen>
   // ── UI ────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Panel de Administración'),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
+            tooltip: 'Cerrar sesión',
             onPressed: () async {
               await _authSvc.signOut();
               if (mounted) context.go(AppConstants.routeLogin);
@@ -255,9 +205,6 @@ class _AdminScreenState extends State<AdminScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
           tabs: const [
             Tab(icon: Icon(Icons.directions_car), text: 'Vehículos'),
             Tab(icon: Icon(Icons.badge_outlined), text: 'Conductores'),
@@ -273,44 +220,37 @@ class _AdminScreenState extends State<AdminScreen>
                     ? _showAgregarVehiculoDialog
                     : _showAgregarConductorDialog,
                 icon: const Icon(Icons.add),
-                label: Text(
-                  _tabController.index == 0
-                      ? 'Agregar vehículo'
-                      : 'Agregar conductor',
-                ),
-                backgroundColor: const Color(AppColors.primaryBlue),
+                label: Text(_tabController.index == 0
+                    ? 'Agregar vehículo'
+                    : 'Agregar conductor'),
               ),
             ),
       body: _admin == null
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Encabezado institución
+                // Encabezado institución — surfaceTint con texto del tema
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 14),
-                  color: const Color(AppColors.primaryBlue).withOpacity(0.08),
+                      horizontal: 20, vertical: 12),
+                  color: cs.surfaceContainerHighest,
                   child: Row(
                     children: [
-                      const Icon(Icons.business,
-                          color: Color(AppColors.primaryBlue), size: 20),
+                      Icon(Icons.business,
+                          color: cs.onSurfaceVariant, size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _admin!.nombre,
-                          style: const TextStyle(
-                            color: Color(AppColors.primaryBlue),
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: tt.titleMedium,
                         ),
                       ),
                     ],
                   ),
                 ),
+                const Divider(height: 1),
 
-                // Contenido de las pestañas
                 Expanded(
                   child: TabBarView(
                     controller: _tabController,
@@ -319,13 +259,11 @@ class _AdminScreenState extends State<AdminScreen>
                         vehiculosStream: _vehiculosStream,
                         conductoresStream: _conductoresStream,
                         onToggle: _toggleVehiculo,
-                        onDelete: _eliminarVehiculo,
                         onAsignar: _showAsignarDialog,
                       ),
                       _ConductoresTab(
                         stream: _conductoresStream,
                         onToggle: _toggleConductor,
-                        onDelete: _eliminarConductor,
                       ),
                     ],
                   ),
@@ -343,34 +281,28 @@ class _VehiculosTab extends StatelessWidget {
   final Stream<List<VehicleModel>> vehiculosStream;
   final Stream<List<UserModel>> conductoresStream;
   final void Function(VehicleModel) onToggle;
-  final void Function(VehicleModel) onDelete;
   final void Function(VehicleModel, List<UserModel>) onAsignar;
 
   const _VehiculosTab({
     required this.vehiculosStream,
     required this.conductoresStream,
     required this.onToggle,
-    required this.onDelete,
     required this.onAsignar,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Combina ambos streams para tener vehículos y conductores disponibles
     return StreamBuilder<List<UserModel>>(
       stream: conductoresStream,
       builder: (ctx, conductoresSnap) {
         final conductores = conductoresSnap.data ?? [];
-
         return StreamBuilder<List<VehicleModel>>(
           stream: vehiculosStream,
           builder: (ctx, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
+            if (snap.connectionState == ConnectionState.waiting)
               return const Center(child: CircularProgressIndicator());
-            }
-            if (snap.hasError) {
+            if (snap.hasError)
               return Center(child: Text('Error: ${snap.error}'));
-            }
 
             final vehiculos = snap.data ?? [];
             if (vehiculos.isEmpty) {
@@ -380,23 +312,19 @@ class _VehiculosTab extends StatelessWidget {
                 sugerencia: 'Toca el botón + para agregar uno',
               );
             }
-
             return ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: vehiculos.length,
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (ctx, i) {
                 final v = vehiculos[i];
-                // Busca el nombre del conductor asignado si existe
-                final conductorAsignado = conductores.where(
-                  (c) => c.uid == v.conductorAsignadoUid,
-                ).firstOrNull;
-
+                final conductorAsignado = conductores
+                    .where((c) => c.uid == v.conductorAsignadoUid)
+                    .firstOrNull;
                 return _VehicleCard(
                   vehicle: v,
                   conductorAsignado: conductorAsignado,
                   onToggle: () => onToggle(v),
-                  onDelete: () => onDelete(v),
                   onAsignar: () => onAsignar(v, conductores),
                 );
               },
@@ -414,12 +342,10 @@ class _VehiculosTab extends StatelessWidget {
 class _ConductoresTab extends StatelessWidget {
   final Stream<List<UserModel>> stream;
   final void Function(UserModel) onToggle;
-  final void Function(UserModel) onDelete;
 
   const _ConductoresTab({
     required this.stream,
     required this.onToggle,
-    required this.onDelete,
   });
 
   @override
@@ -427,12 +353,10 @@ class _ConductoresTab extends StatelessWidget {
     return StreamBuilder<List<UserModel>>(
       stream: stream,
       builder: (ctx, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
+        if (snap.connectionState == ConnectionState.waiting)
           return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
+        if (snap.hasError)
           return Center(child: Text('Error: ${snap.error}'));
-        }
 
         final conductores = snap.data ?? [];
         if (conductores.isEmpty) {
@@ -442,7 +366,6 @@ class _ConductoresTab extends StatelessWidget {
             sugerencia: 'Toca el botón + para agregar uno',
           );
         }
-
         return ListView.separated(
           padding: const EdgeInsets.all(16),
           itemCount: conductores.length,
@@ -450,7 +373,6 @@ class _ConductoresTab extends StatelessWidget {
           itemBuilder: (ctx, i) => _ConductorCard(
             conductor: conductores[i],
             onToggle: () => onToggle(conductores[i]),
-            onDelete: () => onDelete(conductores[i]),
           ),
         );
       },
@@ -465,37 +387,38 @@ class _VehicleCard extends StatelessWidget {
   final VehicleModel vehicle;
   final UserModel? conductorAsignado;
   final VoidCallback onToggle;
-  final VoidCallback onDelete;
   final VoidCallback onAsignar;
 
   const _VehicleCard({
     required this.vehicle,
     required this.conductorAsignado,
     required this.onToggle,
-    required this.onDelete,
     required this.onAsignar,
   });
 
   @override
   Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Fila principal: icono, patente, controles
             Row(
               children: [
+                // Avatar: accentSoft cuando activo, surfaceTint cuando inactivo
                 CircleAvatar(
                   backgroundColor: vehicle.activo
-                      ? const Color(AppColors.successGreen).withOpacity(0.15)
-                      : Colors.grey.shade200,
+                      ? AppColors.accentSoft
+                      : AppColors.surfaceTint,
                   child: Icon(
                     _iconoTipo(vehicle.tipo),
                     color: vehicle.activo
-                        ? const Color(AppColors.successGreen)
-                        : Colors.grey,
+                        ? AppColors.accentDark
+                        : cs.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -503,37 +426,29 @@ class _VehicleCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(vehicle.patente,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text(
-                        '${vehicle.tipoLabel} · ${vehicle.activo ? "Activo" : "Inactivo"}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: vehicle.activo
-                              ? const Color(AppColors.successGreen)
-                              : Colors.grey,
-                        ),
-                      ),
+                      // TASK-01: patente
+                      Text(vehicle.patente, style: tt.titleMedium),
+                      const SizedBox(height: 2),
+                      // TASK-01: tipo + estado en chip
+                      _StatusChip(activo: vehicle.activo, label:
+                          '${vehicle.tipoLabel} · ${vehicle.activo ? "Activo" : "Inactivo"}'),
+                      const SizedBox(height: 2),
+                      // TASK-01: institución asignada
+                      Text(vehicle.institucionNombre, style: tt.bodySmall),
                     ],
                   ),
                 ),
+                // Switch — soft-delete únicamente (TASK-03: sin botón eliminar)
                 Switch(
                   value: vehicle.activo,
                   onChanged: (_) => onToggle(),
-                  activeThumbColor: const Color(AppColors.primaryBlue),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: onDelete,
-                  tooltip: 'Eliminar',
                 ),
               ],
             ),
 
-            const Divider(height: 16),
+            const Divider(height: 20),
 
-            // Fila de conductor asignado
+            // TASK-01: conductor asignado
             Row(
               children: [
                 Icon(
@@ -541,9 +456,7 @@ class _VehicleCard extends StatelessWidget {
                       ? Icons.person
                       : Icons.person_add_alt_1_outlined,
                   size: 16,
-                  color: conductorAsignado != null
-                      ? const Color(AppColors.primaryBlue)
-                      : Colors.grey,
+                  color: cs.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -551,15 +464,9 @@ class _VehicleCard extends StatelessWidget {
                     conductorAsignado != null
                         ? conductorAsignado!.nombre
                         : 'Sin conductor asignado',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: conductorAsignado != null
-                          ? const Color(AppColors.textPrimary)
-                          : Colors.grey,
-                      fontStyle: conductorAsignado == null
-                          ? FontStyle.italic
-                          : FontStyle.normal,
-                    ),
+                    style: conductorAsignado != null
+                        ? tt.bodyMedium?.copyWith(color: cs.onSurface)
+                        : tt.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
                   ),
                 ),
                 TextButton.icon(
@@ -570,7 +477,6 @@ class _VehicleCard extends StatelessWidget {
                     style: const TextStyle(fontSize: 12),
                   ),
                   style: TextButton.styleFrom(
-                    foregroundColor: const Color(AppColors.primaryBlue),
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 4),
                     minimumSize: Size.zero,
@@ -598,24 +504,25 @@ class _VehicleCard extends StatelessWidget {
 class _ConductorCard extends StatelessWidget {
   final UserModel conductor;
   final VoidCallback onToggle;
-  final VoidCallback onDelete;
 
   const _ConductorCard({
     required this.conductor,
     required this.onToggle,
-    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+
     return Card(
       child: ListTile(
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: CircleAvatar(
           backgroundColor: conductor.activo
-              ? const Color(AppColors.primaryBlue).withOpacity(0.12)
-              : Colors.grey.shade200,
+              ? AppColors.accentSoft
+              : AppColors.surfaceTint,
           child: Text(
             conductor.nombre.isNotEmpty
                 ? conductor.nombre[0].toUpperCase()
@@ -623,59 +530,56 @@ class _ConductorCard extends StatelessWidget {
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: conductor.activo
-                  ? const Color(AppColors.primaryBlue)
-                  : Colors.grey,
+                  ? AppColors.accentDark
+                  : cs.onSurfaceVariant,
             ),
           ),
         ),
-        title: Text(
-          conductor.nombre,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-        ),
+        // TASK-02: nombre, email y badge de estado
+        title: Text(conductor.nombre, style: tt.titleMedium),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              conductor.email,
-              style: const TextStyle(fontSize: 12),
-            ),
-            const SizedBox(height: 2),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: conductor.activo
-                    ? const Color(AppColors.successGreen).withOpacity(0.12)
-                    : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text(
-                conductor.activo ? 'Activo' : 'Inactivo',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: conductor.activo
-                      ? const Color(AppColors.successGreen)
-                      : Colors.grey,
-                ),
-              ),
+            Text(conductor.email, style: tt.bodySmall),
+            const SizedBox(height: 4),
+            _StatusChip(
+              activo: conductor.activo,
+              label: conductor.activo ? 'Activo' : 'Inactivo',
             ),
           ],
         ),
         isThreeLine: true,
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Switch(
-              value: conductor.activo,
-              onChanged: (_) => onToggle(),
-              activeThumbColor: const Color(AppColors.primaryBlue),
-            ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline, color: Colors.red),
-              onPressed: onDelete,
-              tooltip: 'Eliminar conductor',
-            ),
-          ],
+        // TASK-03: solo Switch de inhabilitación, sin botón eliminar
+        trailing: Switch(
+          value: conductor.activo,
+          onChanged: (_) => onToggle(),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Chip de estado reutilizable ───────────────────────────────────
+class _StatusChip extends StatelessWidget {
+  final bool activo;
+  final String label;
+
+  const _StatusChip({required this.activo, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: activo ? AppColors.accentSoft : AppColors.surfaceTint,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: activo ? AppColors.accentDark : AppColors.textSecondary,
         ),
       ),
     );
@@ -698,18 +602,26 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 64, color: Colors.grey.shade400),
+          // Contenedor con fondo surfaceTint para el ícono — spec §7
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 64, color: cs.onSurfaceVariant),
+          ),
           const SizedBox(height: 16),
-          Text(mensaje,
-              style: TextStyle(
-                  color: Colors.grey.shade600, fontSize: 16)),
+          Text(mensaje, style: tt.titleMedium),
           const SizedBox(height: 8),
-          Text(sugerencia,
-              style: const TextStyle(color: Colors.grey)),
+          Text(sugerencia, style: tt.bodyMedium),
         ],
       ),
     );
@@ -786,9 +698,8 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
         ElevatedButton(
           onPressed: _saving ? null : _save,
           child: _saving
@@ -804,7 +715,6 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
-
     final vehicle = VehicleModel(
       id: const Uuid().v4(),
       patente: _patenteCtrl.text.trim().toUpperCase(),
@@ -814,7 +724,6 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
       activo: true,
       createdAt: DateTime.now(),
     );
-
     await widget.onSave(vehicle);
   }
 
@@ -831,7 +740,7 @@ class _VehicleFormDialogState extends State<_VehicleFormDialog> {
 class _ConductorFormDialog extends StatefulWidget {
   final String institucionId;
   final Stream<List<VehicleModel>> vehiculosStream;
-  final Future<void> Function(String nombre, String email, String password) onSave;
+  final Future<void> Function(String, String, String) onSave;
 
   const _ConductorFormDialog({
     required this.institucionId,
@@ -844,15 +753,17 @@ class _ConductorFormDialog extends StatefulWidget {
 }
 
 class _ConductorFormDialogState extends State<_ConductorFormDialog> {
-  final _formKey      = GlobalKey<FormState>();
-  final _nombreCtrl   = TextEditingController();
-  final _emailCtrl    = TextEditingController();
-  final _passCtrl     = TextEditingController();
-  bool _obscurePass   = true;
-  bool _saving        = false;
+  final _formKey    = GlobalKey<FormState>();
+  final _nombreCtrl = TextEditingController();
+  final _emailCtrl  = TextEditingController();
+  final _passCtrl   = TextEditingController();
+  bool _obscurePass = true;
+  bool _saving      = false;
 
   @override
   Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+
     return AlertDialog(
       title: const Text('Registrar conductor'),
       content: SingleChildScrollView(
@@ -861,7 +772,6 @@ class _ConductorFormDialogState extends State<_ConductorFormDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Nombre
               TextFormField(
                 controller: _nombreCtrl,
                 textCapitalization: TextCapitalization.words,
@@ -875,8 +785,6 @@ class _ConductorFormDialogState extends State<_ConductorFormDialog> {
                     : null,
               ),
               const SizedBox(height: 14),
-
-              // Email
               TextFormField(
                 controller: _emailCtrl,
                 keyboardType: TextInputType.emailAddress,
@@ -892,8 +800,6 @@ class _ConductorFormDialogState extends State<_ConductorFormDialog> {
                 },
               ),
               const SizedBox(height: 14),
-
-              // Contraseña
               TextFormField(
                 controller: _passCtrl,
                 obscureText: _obscurePass,
@@ -902,9 +808,9 @@ class _ConductorFormDialogState extends State<_ConductorFormDialog> {
                   labelText: 'Contraseña temporal',
                   prefixIcon: const Icon(Icons.lock_outline),
                   suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePass ? Icons.visibility_off : Icons.visibility,
-                    ),
+                    icon: Icon(_obscurePass
+                        ? Icons.visibility_off
+                        : Icons.visibility),
                     onPressed: () =>
                         setState(() => _obscurePass = !_obscurePass),
                   ),
@@ -915,11 +821,11 @@ class _ConductorFormDialogState extends State<_ConductorFormDialog> {
                   return null;
                 },
               ),
-
               const SizedBox(height: 8),
-              const Text(
+              // Texto informativo — usa bodySmall del tema (color textSecondary)
+              Text(
                 'El conductor usará estas credenciales para ingresar a la app.',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
+                style: tt.bodySmall,
               ),
             ],
           ),
@@ -927,9 +833,8 @@ class _ConductorFormDialogState extends State<_ConductorFormDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
         ElevatedButton(
           onPressed: _saving ? null : _save,
           child: _saving
@@ -965,14 +870,13 @@ class _ConductorFormDialogState extends State<_ConductorFormDialog> {
   }
 }
 
-
 // ══════════════════════════════════════════════════════════════════
 // DIALOG: ASIGNAR CONDUCTOR A VEHÍCULO
 // ══════════════════════════════════════════════════════════════════
 class _AsignarConductorDialog extends StatefulWidget {
   final VehicleModel vehiculo;
   final List<UserModel> conductores;
-  final Future<void> Function(String? conductorUid) onAsignar;
+  final Future<void> Function(String?) onAsignar;
 
   const _AsignarConductorDialog({
     required this.vehiculo,
@@ -992,58 +896,52 @@ class _AsignarConductorDialogState extends State<_AsignarConductorDialog> {
   @override
   void initState() {
     super.initState();
-    // Pre-seleccionar el conductor actualmente asignado
     _seleccionado = widget.vehiculo.conductorAsignadoUid;
   }
 
   @override
   Widget build(BuildContext context) {
-    final conductoresActivos =
-        widget.conductores.where((c) => c.activo).toList();
+    final tt = Theme.of(context).textTheme;
+    final activos = widget.conductores.where((c) => c.activo).toList();
 
     return AlertDialog(
-      title: Text('Asignar conductor\n${widget.vehiculo.patente}',
-          style: const TextStyle(fontSize: 16)),
+      title: Text(
+        'Asignar conductor\n${widget.vehiculo.patente}',
+        style: tt.titleMedium,
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (conductoresActivos.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
+          if (activos.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(
                 'No hay conductores activos disponibles.\n'
                 'Agrega conductores en la pestaña "Conductores".',
-                style: TextStyle(color: Colors.grey, fontSize: 13),
+                style: tt.bodyMedium,
               ),
             )
           else ...[
-            // Opción: sin conductor
             RadioListTile<String?>(
               value: null,
               groupValue: _seleccionado,
               onChanged: (v) => setState(() => _seleccionado = v),
-              title: const Text(
+              title: Text(
                 'Sin asignar',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontStyle: FontStyle.italic,
-                    color: Colors.grey),
+                style: tt.bodyMedium?.copyWith(fontStyle: FontStyle.italic),
               ),
               contentPadding: EdgeInsets.zero,
               dense: true,
             ),
             const Divider(height: 8),
-
-            // Lista de conductores activos
-            ...conductoresActivos.map((c) => RadioListTile<String?>(
+            ...activos.map((c) => RadioListTile<String?>(
                   value: c.uid,
                   groupValue: _seleccionado,
                   onChanged: (v) => setState(() => _seleccionado = v),
-                  title: Text(c.nombre,
-                      style: const TextStyle(fontSize: 14)),
-                  subtitle: Text(c.email,
-                      style: const TextStyle(fontSize: 11)),
+                  title: Text(c.nombre, style: tt.bodyMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface)),
+                  subtitle: Text(c.email, style: tt.bodySmall),
                   contentPadding: EdgeInsets.zero,
                   dense: true,
                 )),
@@ -1052,11 +950,10 @@ class _AsignarConductorDialogState extends State<_AsignarConductorDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancelar'),
-        ),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar')),
         ElevatedButton(
-          onPressed: (_saving || conductoresActivos.isEmpty)
+          onPressed: (_saving || activos.isEmpty)
               ? null
               : () async {
                   setState(() => _saving = true);
@@ -1064,8 +961,7 @@ class _AsignarConductorDialogState extends State<_AsignarConductorDialog> {
                 },
           child: _saving
               ? const SizedBox(
-                  height: 16,
-                  width: 16,
+                  height: 16, width: 16,
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Guardar'),
         ),

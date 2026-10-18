@@ -1,8 +1,11 @@
 // lib/screens/auth/login_screen.dart
+// Spec §7 Login: fondo blanco, formulario directo sobre el blanco (sin Card),
+// ancho máximo 440 dp, campos con borde visible del tema.
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants.dart';
+import '../../core/theme/app_colors.dart';
 import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 
@@ -33,8 +36,15 @@ class _LoginScreenState extends State<LoginScreen> {
         email: _emailCtrl.text.trim(),
         password: _passCtrl.text,
       );
-
       if (!mounted) return;
+
+      // TASK-04: bloquear acceso si la cuenta fue deshabilitada por el admin
+      if (!user.activo) {
+        await _authSvc.signOut();
+        setState(() => _error =
+            'Tu cuenta está suspendida. Contacta al administrador.');
+        return;
+      }
 
       switch (user.rol) {
         case UserRole.particular:
@@ -54,145 +64,160 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   String _parseError(String e) {
-    if (e.contains('user-not-found') || e.contains('wrong-password')) {
+    if (e.contains('user-not-found') || e.contains('wrong-password'))
       return 'Correo o contraseña incorrectos.';
-    }
-    if (e.contains('too-many-requests')) {
+    if (e.contains('too-many-requests'))
       return 'Demasiados intentos. Intenta más tarde.';
-    }
     return 'Error al iniciar sesión. Intenta nuevamente.';
   }
 
   // ── UI ────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final tt = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(AppColors.surfaceLight),
+      // Fondo blanco — spec §7
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 24),
-                // Logo / nombre
-                Center(
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 80, height: 80,
-                        decoration: BoxDecoration(
-                          color: const Color(AppColors.primaryBlue),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Icon(Icons.emergency, color: Colors.white, size: 44),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(AppConstants.appName,
-                        style: theme.textTheme.headlineMedium?.copyWith(
-                          color: const Color(AppColors.primaryBlue),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text('Alertas preventivas para todos',
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 48),
-                Text('Iniciar sesión', style: theme.textTheme.titleLarge),
-                const SizedBox(height: 24),
-
-                // Email
-                TextFormField(
-                  controller: _emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Correo electrónico',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Ingresa tu correo';
-                    if (!v.contains('@')) return 'Correo inválido';
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-
-                // Contraseña
-                TextFormField(
-                  controller: _passCtrl,
-                  obscureText: _obscurePass,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _login(),
-                  decoration: InputDecoration(
-                    labelText: 'Contraseña',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscurePass ? Icons.visibility_off : Icons.visibility),
-                      onPressed: () => setState(() => _obscurePass = !_obscurePass),
-                    ),
-                  ),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Ingresa tu contraseña';
-                    if (v.length < 6) return 'Mínimo 6 caracteres';
-                    return null;
-                  },
-                ),
-
-                // Error
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            child: ConstrainedBox(
+              // Ancho máximo 440 dp — spec §5
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Logo: cuadro 80x80 primary con radio 20 e ícono blanco
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    width: 80, height: 80,
                     decoration: BoxDecoration(
-                      color: Colors.red.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.red.shade200),
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Row(children: [
-                      const Icon(Icons.error_outline, color: Colors.red, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13))),
-                    ]),
+                    child: const Icon(Icons.emergency,
+                        color: AppColors.onPrimary, size: 44),
                   ),
+                  const SizedBox(height: 16),
+                  Text(AppConstants.appName,
+                      style: tt.headlineMedium
+                          ?.copyWith(color: AppColors.primary)),
+                  const SizedBox(height: 4),
+                  Text('Alertas preventivas para todos',
+                      style: tt.bodyMedium),
+                  const SizedBox(height: 40),
+
+                  // Formulario directo sobre fondo blanco — spec §7
+                  Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Iniciar sesión', style: tt.titleLarge),
+                        const SizedBox(height: 24),
+
+                        // Correo
+                        TextFormField(
+                          controller: _emailCtrl,
+                          keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'Correo electrónico',
+                            prefixIcon: Icon(Icons.email_outlined),
+                          ),
+                          validator: (v) {
+                            if (v == null || v.isEmpty)
+                              return 'Ingresa tu correo';
+                            if (!v.contains('@')) return 'Correo inválido';
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Contraseña
+                        TextFormField(
+                          controller: _passCtrl,
+                          obscureText: _obscurePass,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _login(),
+                          decoration: InputDecoration(
+                            labelText: 'Contraseña',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              icon: Icon(_obscurePass
+                                  ? Icons.visibility_off
+                                  : Icons.visibility),
+                              onPressed: () => setState(
+                                  () => _obscurePass = !_obscurePass),
+                            ),
+                          ),
+                          validator: (v) {
+                            if (v == null || v.isEmpty)
+                              return 'Ingresa tu contraseña';
+                            if (v.length < 6)
+                              return 'Mínimo 6 caracteres';
+                            return null;
+                          },
+                        ),
+
+                        // Bloque de error — fondo errorSoft, texto error del tema
+                        if (_error != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: cs.errorContainer,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(children: [
+                              Icon(Icons.error_outline,
+                                  color: cs.error, size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(_error!,
+                                    style: tt.bodySmall
+                                        ?.copyWith(color: cs.error)),
+                              ),
+                            ]),
+                          ),
+                        ],
+
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: _showForgotPassword,
+                            child: const Text('¿Olvidaste tu contraseña?'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Botón principal — FilledButton accent (azul)
+                        FilledButton(
+                          onPressed: _loading ? null : _login,
+                          child: _loading
+                              ? const SizedBox(
+                                  height: 20, width: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.onAccent))
+                              : const Text('Ingresar'),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+                  Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Text('¿No tienes cuenta? ', style: tt.bodyMedium),
+                    TextButton(
+                      onPressed: () =>
+                          context.go(AppConstants.routeRegister),
+                      child: const Text('Regístrate aquí'),
+                    ),
+                  ]),
                 ],
-
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _showForgotPassword,
-                    child: const Text('¿Olvidaste tu contraseña?'),
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: _loading ? null : _login,
-                  child: _loading
-                      ? const SizedBox(height: 20, width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Ingresar'),
-                ),
-
-                const SizedBox(height: 24),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const Text('¿No tienes cuenta? '),
-                  TextButton(
-                    onPressed: () => context.go(AppConstants.routeRegister),
-                    child: const Text('Regístrate aquí'),
-                  ),
-                ]),
-              ],
+              ),
             ),
           ),
         ),
@@ -201,7 +226,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _showForgotPassword() {
-    final emailCtrl = TextEditingController(text: _emailCtrl.text);
+    final emailCtrl =
+        TextEditingController(text: _emailCtrl.text);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -209,27 +235,30 @@ class _LoginScreenState extends State<LoginScreen> {
         content: TextField(
           controller: emailCtrl,
           keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(labelText: 'Correo electrónico'),
+          decoration: const InputDecoration(
+              labelText: 'Correo electrónico'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(minimumSize: const Size(0, 40)),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancelar')),
+          FilledButton(
             onPressed: () async {
               try {
-                await _authSvc.sendPasswordReset(emailCtrl.text.trim());
+                await _authSvc
+                    .sendPasswordReset(emailCtrl.text.trim());
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Correo de recuperación enviado.')),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content:
+                          Text('Correo de recuperación enviado.')));
                 }
               } catch (_) {
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('No se pudo enviar el correo.')),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content:
+                          Text('No se pudo enviar el correo.')));
                 }
               }
             },
