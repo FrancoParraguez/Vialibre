@@ -62,6 +62,10 @@ class AppConstants {
   static const int privacyNoticeCurrentVersion = 1;
   static const String routePrivacyNotice = '/privacy-notice';
 
+  // ── Responsive breakpoints (spec ruta-emergencia-progreso Task 5) ──
+  static const double breakpointCompact = 600.0;
+  static const double breakpointMedium  = 900.0;
+
   // ── Modo sin destino fijo (spec modo-emergencia-sin-destino) ──
   static const String openRouteModeLabel    = 'Modo sin destino fijo';
   static const String openRouteModeHint     = 'No se conoce el punto exacto de la emergencia. '
