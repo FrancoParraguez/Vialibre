@@ -6,12 +6,14 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 
 import 'core/constants.dart';
 import 'core/theme/app_theme.dart';
 import 'models/user_model.dart';
 import 'services/auth_service.dart';
+import 'services/date_provider.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/particular/home_screen.dart';
@@ -30,6 +32,9 @@ Future<void> main() async {
     DeviceOrientation.portraitUp,
   ]);
 
+  // Inicializar locale es_CL para formateo de fechas corporativas
+  await initializeDateFormatting('es_CL');
+
   // Inicializar Firebase
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -47,6 +52,7 @@ class ViaLibreApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         Provider<AuthService>(create: (_) => AuthService()),
+        ChangeNotifierProvider<DateProvider>(create: (_) => DateProvider()),
       ],
       child: MaterialApp.router(
         title: AppConstants.appName,

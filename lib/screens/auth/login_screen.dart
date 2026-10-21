@@ -54,8 +54,6 @@ class _LoginScreenState extends State<LoginScreen> {
           context.go(AppConstants.routeEmergency);
         case UserRole.admin:
           context.go(AppConstants.routeAdmin);
-        default:
-          context.go(AppConstants.routeHomeParticular);
       }
     } catch (e) {
       setState(() => _error = _parseError(e.toString()));

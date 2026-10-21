@@ -1,8 +1,6 @@
 // lib/services/notification_service.dart
 // Gestiona notificaciones push (FCM) y notificaciones locales para alertas hands-free.
 
-import 'package:flutter/painting.dart' show Color;
-
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';

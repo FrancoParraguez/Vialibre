@@ -73,6 +73,18 @@ class AuthService {
     return UserModel.fromMap({'uid': doc.id, ...doc.data()!});
   }
 
+  // ── Stream en tiempo real del perfil de un usuario ───────────
+  Stream<UserModel> watchUserById(String uid) {
+    return _firestore
+        .collection(AppConstants.colUsers)
+        .doc(uid)
+        .snapshots()
+        .map((doc) {
+      if (!doc.exists) throw Exception('Usuario no encontrado');
+      return UserModel.fromMap({'uid': doc.id, ...doc.data()!});
+    });
+  }
+
   // ── Crear conductor (rol emergencia) para una institución ─────
   /// Usa la REST API de Firebase Auth para crear el usuario sin
   /// afectar la sesión activa del admin (funciona en web y móvil).
