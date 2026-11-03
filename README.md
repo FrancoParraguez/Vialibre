@@ -69,6 +69,41 @@ La distancia entre los dos vehículos se calcula con la **fórmula de Haversine*
 
 ---
 
+## Arquitectura del Sistema
+
+El software adopta un patrón arquitectónico en tres capas desacopladas, asegurando la separación estricta entre presentación, lógica de negocio y entidades de dominio:
+
+<img width="805" height="602" alt="image" src="https://github.com/user-attachments/assets/998b05f0-ed7c-4d1e-90e2-e83b796932da" />
+
+
+
+1. Capa de Presentación
+
+DriverScreen & MapOverlay: Interfaz civil para renderizado cartográfico con GoogleMapController, visualización reactiva del estado de alerta (isAlertActive), animación visual pulsante y descarte contextual fuera del radio crítico.
+
+EmergencyScreen: Consola institucional para gestión del ciclo de la baliza (isTransmitting), monitoreo de telemetría en tiempo real (velocidad y radio dinámico) y registro acumulado de conductores advertidos.
+
+AdminDashboardScreen: Panel SPA en Flutter Web que consume flujos reactivos de Firestore (fleetStream, driversStream), gestionando la flota vehicular y el aprovisionamiento de cuentas vía Identity Toolkit REST API.
+
+2. Capa de Servicios de Negocio
+
+GeofencingService: Procesamiento geodésico mediante la fórmula de Haversine y cálculo del radio predictivo dinámico según velocidades relativas de aproximación.
+
+LocationService: Ingesta de telemetría geoespacial a 1 Hz con umbral de desplazamiento de 5 metros, sincronización efímera hacia Firebase Realtime Database y purgado automático al cesar la baliza.
+
+AuthService: Proveedor de autenticación, control de acceso basado en roles (particular, emergencia, admin) y guardianes de navegación.
+
+NotificationService: Despacho de notificaciones locales con canal de máxima prioridad e interrupción crítica a nivel de sistema operativo en Android e iOS.
+
+3. Capa de Dominio y Modelos
+
+User: Entidad de usuario con UID, credenciales, rol asignado e institución asociada.
+
+Vehicle: Modelo de flota institucional indexado por placa patente, tipo de móvil y clave foránea al conductor asignado.
+
+Emergency: Modelo de sesión crítica que vincula vehículo, chofer, estado de la baliza y total de conductores alertados.
+
+LocationData: Objeto de valor que encapsula latitud, longitud, rumbo, velocidad instantánea en km/h y marca temporal.
 ## Roles de usuario
 
 | Rol | Acceso | Registro |
