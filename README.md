@@ -68,6 +68,28 @@ Donde:
 La distancia entre los dos vehículos se calcula con la **fórmula de Haversine**, que mide distancias exactas sobre la superficie terrestre considerando su curvatura.
 
 ---
+## Metodología de Desarrollo y Gestión del Proyecto
+
+El desarrollo del proyecto **Vía Libre** se rige por un marco de trabajo ágil adaptado, fundamentado en iteraciones quincenales fijas orientadas a la entrega continua de incrementos funcionales de software. La planificación se enfoca en resolver los riesgos técnicos críticos y entregar valor funcional temprano mediante especificaciones rigurosas de ingeniería de software.
+
+---
+
+### 2. Especificación y Estimación de Requerimientos
+
+* **Formulación de Requerimientos**: Cada funcionalidad se documenta como una historia de usuario estructurada bajo la sintaxis de Desarrollo Guiado por el Comportamiento (*Dado que*, *Cuando*, *Entonces*), lo que garantiza criterios de aceptación verificables tanto a nivel de código como en pruebas de campo.
+* **Puntos de Esfuerzo**: La complejidad de cada requerimiento se estima mediante la secuencia matemática de Fibonacci, ponderando la dificultad algorítmica, el volumen de código y la incertidumbre tecnológica[cite: 3, 6].
+* **Control de Iteraciones**: El esfuerzo total del catálogo (62 puntos) se distribuye en ciclos de dos semanas. A la fecha, con la culminación de las dos primeras iteraciones, se cuenta con un 85.5% de avance real verificado (53 puntos terminados)
+
+---
+
+### 3. Flujo de Trabajo y Control de Calidad (Criterios de Aceptación y Finalización)
+
+Para que cualquier funcionalidad o tarea técnica sea declarada como **completada** e integrada en la rama principal, debe superar los siguientes controles técnicos:
+
+1. **Calidad de Código**: Código fuente en Dart sin advertencias ni errores del analizador estático, siguiendo estrictamente las normas de nombrado formales y manteniendo las claves de conexión y credenciales fuera del repositorio mediante variables de configuración seguras
+2. **Convención en el Registro de Cambios**: Registro de modificaciones estandarizado que indica el tipo de intervención realizada (`feat`, `fix`, `test`, `refactor`, `docs`) y asocia directamente el identificador del requerimiento abordado
+3. **Flujo de Integración**: Se prohíben las modificaciones directas en la rama principal (`main`). Toda incorporación se realiza mediante solicitudes de integración que requieren la revisión y aprobación cruzada del otro miembro del equipo
+4. **Validación y Pruebas**: Cobertura de pruebas automáticas de unidad para los módulos críticos (cálculos de semiverseno y algoritmos de proximidad dinámica) y validación manual directa en dispositivos físicos.
 
 ## Arquitectura del Sistema
 
