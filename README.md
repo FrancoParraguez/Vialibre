@@ -74,7 +74,7 @@ El desarrollo del proyecto **Vía Libre** se rige por un marco de trabajo ágil 
 
 ---
 
-### 2. Especificación y Estimación de Requerimientos
+### 1. Especificación y Estimación de Requerimientos
 
 * **Formulación de Requerimientos**: Cada funcionalidad se documenta como una historia de usuario estructurada bajo la sintaxis de Desarrollo Guiado por el Comportamiento (*Dado que*, *Cuando*, *Entonces*), lo que garantiza criterios de aceptación verificables tanto a nivel de código como en pruebas de campo.
 * **Puntos de Esfuerzo**: La complejidad de cada requerimiento se estima mediante la secuencia matemática de Fibonacci, ponderando la dificultad algorítmica, el volumen de código y la incertidumbre tecnológica[cite: 3, 6].
@@ -82,7 +82,7 @@ El desarrollo del proyecto **Vía Libre** se rige por un marco de trabajo ágil 
 
 ---
 
-### 3. Flujo de Trabajo y Control de Calidad (Criterios de Aceptación y Finalización)
+### 2. Flujo de Trabajo y Control de Calidad (Criterios de Aceptación y Finalización)
 
 Para que cualquier funcionalidad o tarea técnica sea declarada como **completada** e integrada en la rama principal, debe superar los siguientes controles técnicos:
 
