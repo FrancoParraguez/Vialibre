@@ -12,23 +12,37 @@ El objetivo es reducir los tiempos de respuesta eliminando la reacción tardía 
 
 ---
 
-## Funcionalidades
+##  Requerimientos del Sistema
 
-### Conductor particular
-- Visualización del mapa en tiempo real con su posición actual
-- Recepción de alertas cuando un vehículo de emergencia entra en su radio de proximidad
-- Overlay de alerta con información del vehículo (tipo, distancia aproximada)
+### Requerimientos Funcionales (RF)
 
-### Conductor de emergencia
-- Transmisión de ubicación en tiempo real al trazar una ruta de emergencia
-- El radio de alerta se ajusta automáticamente según la velocidad del vehículo
+| Código | Requerimiento | Descripción | Actor / Rol |
+| :--- | :--- | :--- | :--- |
+| **RF-01** | **Registro e inicio de sesión** | Permite a conductores particulares crear una cuenta e iniciar sesión desde la app móvil. Conductores de emergencia y administradores ingresan con credenciales creadas por su institución (sin autoregistro). | Todos |
+| **RF-02** | **Autenticación por rol** | Identifica el perfil del usuario al iniciar sesión (`particular`, `emergencia`, `administrador`) y lo redirige a su interfaz correspondiente, aislando permisos. | Todos |
+| **RF-03** | **Mapa en tiempo real** | Muestra la ubicación actual del conductor particular sobre un mapa actualizado en tiempo real como interfaz principal de alertas. | Conductor particular |
+| **RF-04** | **Activación de emergencia** | Permite iniciar y finalizar una sesión de emergencia. Al activarla transmite GPS en vivo; al desactivarla detiene el envío y purga los datos temporales. | Conductor emergencia |
+| **RF-05** | **Transmisión de telemetría** | Envía de forma continua la posición GPS, velocidad y dirección del vehículo mientras la emergencia permanece activa. | Conductor emergencia |
+| **RF-06** | **Radio de alerta dinámico** | Calcula y recalcula en tiempo real el perímetro crítico de proximidad considerando la velocidad del vehículo de emergencia y la del conductor particular. | Sistema |
+| **RF-07** | **Emisión de alerta** | Dispara una notificación inmediata (tipo de vehículo y distancia aproximada) al ingresar al radio crítico, operando incluso con la app en segundo plano o pantalla bloqueada. | Sistema / Particular |
+| **RF-08** | **Cierre automático de alerta** | Oculta automáticamente la notificación cuando el vehículo de emergencia se aleja y sale del radio crítico, sin requerir interacción manual. | Sistema / Particular |
+| **RF-09** | **Gestión de flota institucional** | Permite agregar, activar, desactivar y eliminar vehículos de la institución desde el panel web (especificando tipo y patente). | Administrador |
+| **RF-10** | **Gestión de conductores** | Permite crear cuentas para conductores de emergencia vinculadas a la institución desde el panel web sin cerrar la sesión administrativa activa. | Administrador |
+| **RF-11** | **Asignación conductor–vehículo** | Permite vincular un conductor a un vehículo específico de la flota institucional (relación 1 a 1 por vehículo activo). | Administrador |
 
-### Panel de administración (web)
-- Gestión de flota: agregar, activar/desactivar y eliminar vehículos por institución
-- Gestión de conductores: crear cuentas de conductores de emergencia directamente desde el panel sin afectar la sesión del administrador
-- Asignación de conductor a vehículo con selector visual
-- Toda la información se actualiza en tiempo real via Firestore
+---
 
+### Requerimientos No Funcionales (RNF)
+
+| Código | Atributo | Criterio de Aceptación y Especificación |
+| :--- | :--- | :--- |
+| **RNF-01** | **Rendimiento** | El sistema debe calcular y emitir la alerta al conductor particular en un tiempo máximo de **2 segundos** desde que el vehículo de emergencia ingresa al radio crítico. |
+| **RNF-02** | **Disponibilidad** | Operatividad mínima del **99,5% mensual**, con manejo de estado local y reconexión automática ante pérdida de conectividad para evitar la pérdida silenciosa de alertas. |
+| **RNF-03** | **Seguridad y privacidad** | Control de acceso estricto basado en roles (RBAC), aislamiento de datos institucionales y eliminación inmediata de datos de geolocalización al finalizar la emergencia. |
+| **RNF-04** | **Escalabilidad** | Arquitectura serverless capaz de soportar la incorporación de nuevas flotas, instituciones y ciudades sin requerir rediseño estructural. |
+| **RNF-05** | **Usabilidad** | Interfaz de alerta de alto contraste y lectura rápida, comprensible y accionable en **menos de 3 segundos** sin requerir interacción táctil durante la conducción. |
+| **RNF-06** | **Compatibilidad** | Operación garantizada en condiciones reales de uso (dispositivo bloqueado, pantalla apagada y app en segundo plano) cubriendo los dispositivos móviles más utilizados en Chile. |
+| **RNF-07** | **Confiabilidad** | Comportamiento consistente y predecible en los cálculos de distancia esférica y radio dinámico bajo cualquier escenario de velocidad, dirección o densidad vehicular. |
 ---
 
 
