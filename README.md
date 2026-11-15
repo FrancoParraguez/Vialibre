@@ -194,6 +194,11 @@ LocationData: Objeto de valor que encapsula latitud, longitud, rumbo, velocidad 
 }
 ```
 
+## Diagrama de Clases
+
+<img width="975" height="531" alt="image" src="https://github.com/user-attachments/assets/19b97f13-8659-47b9-818b-16775b2b0c0e" />
+
+
 ### Realtime Database Paths
 
 ```
