@@ -61,6 +61,8 @@ class AppConstants {
   /// Versión actual del aviso de privacidad. Incrementar cuando se actualice el texto.
   static const int privacyNoticeCurrentVersion = 1;
   static const String routePrivacyNotice = '/privacy-notice';
+  static const String prefPrivacyNoticeAcceptedVersion =
+      'privacy_notice_accepted_version';
 
   // ── Responsive breakpoints (spec ruta-emergencia-progreso Task 5) ──
   static const double breakpointCompact = 600.0;

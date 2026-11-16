@@ -12,6 +12,7 @@ import 'core/constants.dart';
 import 'core/theme/app_theme.dart';
 import 'models/user_model.dart';
 import 'services/auth_service.dart';
+import 'services/user_profile_repository.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/particular/home_screen.dart';
@@ -61,7 +62,7 @@ class ViaLibreApp extends StatelessWidget {
 
 // ── Router ────────────────────────────────────────────────────────
 final GoRouter _router = GoRouter(
-  initialLocation: AppConstants.routeLogin,
+  initialLocation: AppConstants.routeHomeParticular,
   redirect: _authGuard,
   routes: [
     GoRoute(
@@ -91,67 +92,91 @@ final GoRouter _router = GoRouter(
   ],
 );
 
-/// Guarda de navegación: redirige al login si no hay sesión activa,
-/// o a la pantalla correcta según el rol si ya está autenticado.
-/// TASK-04: bloquea el acceso si el conductor tiene activo=false.
-/// Redirige a la pantalla de aviso de privacidad si el usuario particular
-/// no ha aceptado la versión actual del aviso.
+/// Guarda de navegación:
+/// - Permite acceso directo al mapa particular (sin inicio de sesión obligatorio).
+/// - Redirige al aviso de privacidad si aún no fue aceptado (local o en Firestore).
+/// - Protege estrictamente `/emergency` y `/admin` verificando cuenta activa y rol.
+/// - Redirige automáticamente a `/emergency` o `/admin` si hay sesión institucional activa.
 Future<String?> _authGuard(BuildContext context, GoRouterState state) async {
-  final authSvc  = AuthService();
-  final fbUser   = authSvc.currentUser;
-  final onAuth   = [AppConstants.routeLogin, AppConstants.routeRegister]
-      .contains(state.matchedLocation);
+  final authSvc = AuthService();
+  final profileRepo = UserProfileRepository();
+  final loc = state.matchedLocation;
 
-  // No hay sesión activa → forzar login
-  if (fbUser == null) {
-    return onAuth ? null : AppConstants.routeLogin;
-  }
+  final onAuth = [AppConstants.routeLogin, AppConstants.routeRegister]
+      .contains(loc);
+  final onProtected = [AppConstants.routeEmergency, AppConstants.routeAdmin]
+      .contains(loc);
 
-  // Permitir acceso libre a la pantalla de aviso de privacidad
-  if (state.matchedLocation == AppConstants.routePrivacyNotice) {
+  // ── Caso 1: Usuario sin cuenta iniciada (invitado / anónimo) ──
+  if (!authSvc.isRegisteredUser) {
+    // Bloquear acceso no autorizado a rutas institucionales
+    if (onProtected) {
+      return AppConstants.routeLogin;
+    }
+
+    // Permitir login, registro y aviso de privacidad libremente
+    if (onAuth || loc == AppConstants.routePrivacyNotice) {
+      return null;
+    }
+
+    // En /home, verificar aceptación local del aviso de privacidad
+    if (loc == AppConstants.routeHomeParticular) {
+      final localVersion = await profileRepo.getLocalPrivacyNoticeVersion();
+      if (localVersion < AppConstants.privacyNoticeCurrentVersion) {
+        return AppConstants.routePrivacyNotice;
+      }
+    }
+
     return null;
   }
 
-  // Ya autenticado intentando ir a login/register → redirigir a su pantalla
-  if (onAuth) {
-    try {
-      final user = await authSvc.getUserById(fbUser.uid);
-      // Cuenta deshabilitada por el admin: cerrar sesión y mostrar error
-      if (!user.activo) {
-        await authSvc.signOut();
-        return AppConstants.routeLogin;
-      }
-      // Conductor particular: verificar aviso de privacidad antes de redirigir
-      if (user.rol == UserRole.particular) {
-        final privacyVersion =
-            user.privacyNoticeVersion ?? 0;
-        if (privacyVersion < AppConstants.privacyNoticeCurrentVersion) {
-          return AppConstants.routePrivacyNotice;
-        }
-      }
-      return _routeForRole(user.rol);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  // Pantalla protegida: verificar que la cuenta siga activa
+  // ── Caso 2: Usuario con cuenta autenticada ────────────────────
+  final fbUser = authSvc.currentUser!;
   try {
     final user = await authSvc.getUserById(fbUser.uid);
+
+    // TASK-04: Cuenta deshabilitada por el admin → cerrar sesión y enviar a login
     if (!user.activo) {
       await authSvc.signOut();
       return AppConstants.routeLogin;
     }
-    // Conductor particular intentando acceder a home sin haber aceptado el aviso
-    if (user.rol == UserRole.particular &&
-        state.matchedLocation == AppConstants.routeHomeParticular) {
-      final privacyVersion = user.privacyNoticeVersion ?? 0;
-      if (privacyVersion < AppConstants.privacyNoticeCurrentVersion) {
-        return AppConstants.routePrivacyNotice;
+
+    // Servicios de emergencia y Administradores: acceso directo y aislamiento por rol
+    if (user.rol == UserRole.emergencia || user.rol == UserRole.admin) {
+      final targetRoute = _routeForRole(user.rol);
+      if (loc != targetRoute) {
+        return targetRoute;
       }
+      return null;
+    }
+
+    // Conductor particular con cuenta iniciada:
+    // Bloquear acceso a pantallas de emergencia o administración
+    if (onProtected) {
+      return AppConstants.routeHomeParticular;
+    }
+
+    if (loc == AppConstants.routePrivacyNotice) {
+      return null;
+    }
+
+    final localVersion = await profileRepo.getLocalPrivacyNoticeVersion();
+    final remoteVersion = user.privacyNoticeVersion ?? 0;
+    final effectiveVersion =
+        remoteVersion > localVersion ? remoteVersion : localVersion;
+
+    if (effectiveVersion < AppConstants.privacyNoticeCurrentVersion) {
+      return AppConstants.routePrivacyNotice;
+    }
+
+    if (onAuth) {
+      return AppConstants.routeHomeParticular;
     }
   } catch (_) {
-    // Si falla la consulta, no interrumpir la navegación
+    // Si falla la lectura de perfil en una ruta protegida, exigir login
+    if (onProtected) {
+      return AppConstants.routeLogin;
+    }
   }
 
   return null; // Sin redirección
