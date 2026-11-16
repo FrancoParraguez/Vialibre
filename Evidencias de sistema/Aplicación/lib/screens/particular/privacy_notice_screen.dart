@@ -27,17 +27,15 @@ class _PrivacyNoticeScreenState extends State<PrivacyNoticeScreen> {
 
     try {
       final authSvc = context.read<AuthService>();
-      final uid = authSvc.currentUser?.uid;
-
-      if (uid == null) {
-        // Sin sesión activa, redirigir a login
-        if (mounted) context.go(AppConstants.routeLogin);
-        return;
-      }
-
       final repo = UserProfileRepository();
+
+      // Guardar aceptación siempre localmente (modo sin cuenta)
+      // y en Firestore únicamente si tiene cuenta registrada activa.
+      final registeredUid =
+          authSvc.isRegisteredUser ? (authSvc.currentUser?.uid ?? '') : '';
+
       await repo.acknowledgePrivacyNotice(
-        uid,
+        registeredUid,
         AppConstants.privacyNoticeCurrentVersion,
       );
 
@@ -149,7 +147,7 @@ class _PrivacyNoticeScreenState extends State<PrivacyNoticeScreen> {
                           ),
                         )
                       : const Text(
-                          'Entendido',
+                          'Entendido y continuar al mapa',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -158,6 +156,13 @@ class _PrivacyNoticeScreenState extends State<PrivacyNoticeScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () => context.go(AppConstants.routeLogin),
+                  icon: const Icon(Icons.admin_panel_settings_outlined, size: 18),
+                  label: const Text('Acceso Emergencias / Administración'),
+                ),
+              ),
             ],
           ),
         ),

@@ -18,6 +18,24 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
+  /// Retorna `true` únicamente si hay un usuario con cuenta formal (no anónimo).
+  bool get isRegisteredUser =>
+      _auth.currentUser != null && !_auth.currentUser!.isAnonymous;
+
+  /// Inicia sesión anónima en segundo plano para proteger las lecturas de RTDB
+  /// sin obligar al conductor particular a pasar por la pantalla de login.
+  /// Si Anonymous Auth no está habilitado en Firebase Console, continúa en modo
+  /// invitado local sin lanzar excepción.
+  Future<User?> ensureAnonymousSession() async {
+    if (_auth.currentUser != null) return _auth.currentUser;
+    try {
+      final cred = await _auth.signInAnonymously();
+      return cred.user;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── Registro ──────────────────────────────────────────────────
   Future<UserModel> registerWithEmail({
     required String email,

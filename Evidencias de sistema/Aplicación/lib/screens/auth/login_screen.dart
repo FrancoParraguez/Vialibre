@@ -54,8 +54,6 @@ class _LoginScreenState extends State<LoginScreen> {
           context.go(AppConstants.routeEmergency);
         case UserRole.admin:
           context.go(AppConstants.routeAdmin);
-        default:
-          context.go(AppConstants.routeHomeParticular);
       }
     } catch (e) {
       setState(() => _error = _parseError(e.toString()));
@@ -109,6 +107,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Iniciar sesión', style: tt.titleLarge),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Acceso para Servicios de Emergencia, Administradores y cuentas particulares opcionales.',
+                          style: tt.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
                         const SizedBox(height: 24),
 
                         // Correo
@@ -210,6 +215,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: const Text('Regístrate aquí'),
                     ),
                   ]),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          context.go(AppConstants.routeHomeParticular),
+                      icon: const Icon(Icons.map_outlined, size: 18),
+                      label: const Text('Continuar al mapa sin iniciar sesión'),
+                    ),
+                  ),
                 ],
               ),
             ),

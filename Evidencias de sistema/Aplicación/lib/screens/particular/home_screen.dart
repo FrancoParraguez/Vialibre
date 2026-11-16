@@ -71,18 +71,6 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
   @override
   void initState() {
     super.initState();
-    _init();
-  }
-
-  Future<void> _init() async {
-    final firebaseUser = _authSvc.currentUser;
-    if (firebaseUser == null) return;
-    _user = await _authSvc.getUserById(firebaseUser.uid);
-
-    await _notifSvc.initialize();
-    await _notifSvc.saveTokenToFirestore(_user!.uid);
-
-    // ── Inicializar PermissionStatusService y MonitoringController ──
     _permissionStatusSvc = PermissionStatusService();
     _monitoringCtrl = MonitoringController(
       _locationSvc,
@@ -90,6 +78,28 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
       _notifSvc,
       _permissionStatusSvc,
     );
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _notifSvc.initialize();
+
+    if (_authSvc.isRegisteredUser) {
+      try {
+        final firebaseUser = _authSvc.currentUser!;
+        final loadedUser = await _authSvc.getUserById(firebaseUser.uid);
+        if (mounted) {
+          setState(() => _user = loadedUser);
+        }
+        await _notifSvc.saveTokenToFirestore(loadedUser.uid);
+      } catch (_) {
+        // Continuar en modo invitado si falla la carga de perfil
+      }
+    } else {
+      // Autenticación anónima transparente para proteger lecturas de RTDB
+      // sin obligar al conductor particular a iniciar sesión.
+      await _authSvc.ensureAnonymousSession();
+    }
 
     // Escuchar cambios de readiness para actualizar la UI
     _readinessSub = _permissionStatusSvc.readinessStream.listen((s) {
@@ -256,9 +266,16 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
 
   // ── Logout ────────────────────────────────────────────────────
   Future<void> _logout() async {
-    _monitoringCtrl.stopMonitoring();
     await _authSvc.signOut();
-    if (mounted) context.go(AppConstants.routeLogin);
+    await _authSvc.ensureAnonymousSession();
+    if (mounted) {
+      setState(() => _user = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sesión cerrada. Continúas recibiendo alertas en modo sin cuenta.'),
+        ),
+      );
+    }
   }
 
   // ── Build ─────────────────────────────────────────────────────
@@ -306,12 +323,28 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
                 ),
               ),
             ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            color: appBarFg,
-            tooltip: 'Cerrar sesión',
-            onPressed: _logout,
-          ),
+          if (_user == null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: TextButton.icon(
+                onPressed: () => context.go(AppConstants.routeLogin),
+                icon: Icon(Icons.login, size: 18, color: appBarFg),
+                label: Text(
+                  'Iniciar sesión',
+                  style: TextStyle(
+                    color: appBarFg,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.logout),
+              color: appBarFg,
+              tooltip: 'Cerrar sesión (${_user!.nombre})',
+              onPressed: _logout,
+            ),
         ],
       ),
       body: Stack(
