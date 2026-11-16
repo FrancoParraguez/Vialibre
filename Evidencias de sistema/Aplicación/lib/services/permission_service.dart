@@ -6,6 +6,7 @@
 // TASK-00 del spec funciones.md (REQ-02).
 
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 import 'package:geolocator/geolocator.dart';
@@ -59,6 +60,25 @@ class PermissionService {
   Future<PermissionResult> requestAllPermissions(
     BuildContext context,
   ) async {
+    if (kIsWeb) {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.deniedForever) {
+        _locationChecked = false;
+        return PermissionResult.locationPermanentlyDenied;
+      }
+      if (perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always) {
+        _locationChecked = true;
+        _notificationsChecked = true;
+        return PermissionResult.granted;
+      }
+      _locationChecked = false;
+      return PermissionResult.locationDenied;
+    }
+
     // 1. Verificar GPS
     final serviceEnabled = await isLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -130,6 +150,12 @@ class PermissionService {
   /// Verifica que los permisos siguen activos sin mostrar diálogos.
   /// Retorna false si la ubicación fue revocada.
   Future<bool> revalidatePermissions() async {
+    if (kIsWeb) {
+      final perm = await Geolocator.checkPermission();
+      return perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always;
+    }
+
     final serviceEnabled = await isLocationServiceEnabled();
     if (!serviceEnabled) return false;
 
@@ -141,11 +167,17 @@ class PermissionService {
 
   // ── Estado rápido (sin solicitar) ────────────────────────────
   Future<bool> get hasLocationPermission async {
+    if (kIsWeb) {
+      final perm = await Geolocator.checkPermission();
+      return perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always;
+    }
     final status = await ph.Permission.locationWhenInUse.status;
     return status.isGranted;
   }
 
   Future<bool> get hasNotificationPermission async {
+    if (kIsWeb) return true;
     final status = await ph.Permission.notification.status;
     return status.isGranted;
   }
@@ -169,6 +201,9 @@ class PermissionService {
             child: const Text('Cancelar'),
           ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(0, 44),
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Entendido'),
           ),

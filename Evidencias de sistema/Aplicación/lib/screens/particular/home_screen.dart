@@ -82,7 +82,11 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
   }
 
   Future<void> _init() async {
-    await _notifSvc.initialize();
+    try {
+      await _notifSvc.initialize();
+    } catch (_) {
+      // Ignorar si FCM no está disponible en el entorno web actual
+    }
 
     if (_authSvc.isRegisteredUser) {
       try {
@@ -217,7 +221,11 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
     if (!mounted) return;
     switch (result) {
       case PermissionResult.granted:
-        // Reinicializar el MonitoringController con los nuevos permisos
+        // Actualizar estado del panel de inmediato y arrancar monitoreo
+        final newReadiness = await _permissionStatusSvc.evaluate();
+        if (mounted) {
+          setState(() => _readiness = newReadiness);
+        }
         await _monitoringCtrl.initialize();
         if (_monitoringCtrl.state == MonitoringState.listo) {
           await _monitoringCtrl.startMonitoring();
@@ -229,6 +237,10 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
             content: Text('Ubicación concedida. Activa las notificaciones para alertas hands-free.'),
           ),
         );
+        final newReadiness = await _permissionStatusSvc.evaluate();
+        if (mounted) {
+          setState(() => _readiness = newReadiness);
+        }
         await _monitoringCtrl.initialize();
         if (_monitoringCtrl.state == MonitoringState.listo) {
           await _monitoringCtrl.startMonitoring();
@@ -242,17 +254,22 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
           showDialog<void>(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: const Text('Permiso denegado permanentemente'),
+              title: const Text('Permiso de ubicación bloqueado'),
               content: const Text(
-                'Ve a Configuración > Permisos y activa la ubicación para Vía Libre.',
+                'Habilita el permiso de ubicación en el ícono de permisos junto a la barra de direcciones del navegador o en Configuración > Permisos.',
               ),
               actions: [
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(0, 44),
+                  ),
                   onPressed: () async {
                     Navigator.pop(ctx);
-                    await permSvc.openAppSettings();
+                    try {
+                      await permSvc.openAppSettings();
+                    } catch (_) {}
                   },
-                  child: const Text('Abrir ajustes'),
+                  child: const Text('Entendido'),
                 ),
               ],
             ),
@@ -436,7 +453,6 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
     _permissionStatusSvc.stopWatching();
     _monitoringCtrl.dispose();
     _locationSvc.dispose();
-    _mapCtrl?.dispose();
     super.dispose();
   }
 }
