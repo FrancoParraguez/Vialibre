@@ -2,7 +2,8 @@
 // Estimación filtrada de velocidad: mediana móvil + EMA, zona muerta,
 // respaldo distancia/tiempo cuando Position.speed no es confiable.
 //
-// Spec: ruta-emergencia-progreso — Task 3
+// Diseñado para ser preciso a baja velocidad: sin "congelar" el último
+// valor alto cuando dejan de llegar muestras.
 
 import 'dart:math' as math;
 
@@ -43,125 +44,95 @@ class SpeedEstimator {
   /// Zona muerta: por debajo de este umbral (km/h) se reporta 0.
   final double deadZoneKmh;
 
+  /// Segundos sin muestra válida tras los cuales se reporta 0.
+  final double staleSeconds;
+
   SpeedEstimator({
-    this.bufferSize = 5,
-    this.emaAlpha   = 0.3,
-    this.deadZoneKmh = 2.0,
+    this.bufferSize = 3,
+    this.emaAlpha = 0.5,
+    this.deadZoneKmh = 1.5,
+    this.staleSeconds = 3.0,
   });
 
-  final List<double> _buffer = []; // velocidades filtradas en km/h
+  final List<double> _buffer = []; // velocidades en km/h
   SpeedSample? _prevSample;
+  DateTime? _lastValidAt;
   double? _emaValue;
 
-  /// Agrega una muestra y devuelve la velocidad estimada en km/h,
-  /// o null si no hay dato válido en los últimos 3 s.
-  double? addSample(SpeedSample sample) {
-    // ── 1. Descartar muestras de mala calidad ─────────────────
-    if (sample.accuracyM > 50) return _checkTimeout(sample);
+  /// Agrega una muestra y devuelve la velocidad estimada en km/h.
+  /// Si no hay datos válidos recientes devuelve 0 (nunca un valor viejo).
+  double addSample(SpeedSample sample) {
+    final prev = _prevSample;
 
-    if (_prevSample != null) {
-      final dtSec = sample.timestamp
-          .difference(_prevSample!.timestamp)
-          .inMilliseconds / 1000.0;
-
-      if (dtSec <= 0 || dtSec > 10) {
-        _prevSample = sample;
-        return _checkTimeout(sample);
-      }
-
-      // Aceleración físicamente imposible > 10 m/s²
-      final rawSpeedMs = _rawSpeedMs(sample, _prevSample!, dtSec);
-      if (rawSpeedMs != null) {
-        final prevSpeedMs = _prevRawSpeedMs(_prevSample!);
-        if (prevSpeedMs != null) {
-          final accel = (rawSpeedMs - prevSpeedMs).abs() / dtSec;
-          if (accel > 10) {
-            _prevSample = sample;
-            return _checkTimeout(sample);
-          }
-        }
-
-        // Velocidad absurda > 250 km/h
-        if (rawSpeedMs * 3.6 > 250) {
-          _prevSample = sample;
-          return _checkTimeout(sample);
-        }
-      }
+    // Sin datos válidos recientes → reiniciar y reportar 0
+    if (_lastValidAt != null &&
+        sample.timestamp.difference(_lastValidAt!).inMilliseconds / 1000.0 >
+            staleSeconds) {
+      _buffer.clear();
+      _emaValue = null;
     }
 
-    // ── 2. Obtener velocidad en km/h ──────────────────────────
-    final dtSec = _prevSample == null
+    // 1. Descartar muestras de mala calidad
+    if (sample.accuracyM > 50) {
+      return _emaValue ?? 0.0;
+    }
+
+    final dtSec = prev == null
         ? null
-        : sample.timestamp
-                .difference(_prevSample!.timestamp)
-                .inMilliseconds /
-            1000.0;
-
-    final double? rawMs = _rawSpeedMs(sample, _prevSample, dtSec);
-    if (rawMs == null) {
-      _prevSample = sample;
-      return _checkTimeout(sample);
+        : sample.timestamp.difference(prev.timestamp).inMilliseconds / 1000.0;
+    if (dtSec != null && dtSec <= 0) {
+      return _emaValue ?? 0.0;
     }
+
+    // 2. Velocidad cruda
+    final rawMs = _rawSpeedMs(sample, prev, dtSec);
+    _prevSample = sample;
+    if (rawMs == null) return _emaValue ?? 0.0;
 
     double speedKmh = rawMs * 3.6;
+    if (speedKmh > 250) return _emaValue ?? 0.0; // absurdo
 
-    // ── 3. Zona muerta ────────────────────────────────────────
-    if (speedKmh < deadZoneKmh) speedKmh = 0.0;
+    // 3. Zona muerta (umbral fijo o ruido del propio Doppler)
+    final noiseKmh = sample.speedAccuracyMs > 0 ? sample.speedAccuracyMs * 3.6 : 0.0;
+    if (speedKmh < deadZoneKmh || speedKmh < noiseKmh * 0.5) speedKmh = 0.0;
 
-    // ── 4. Buffer + mediana móvil ─────────────────────────────
+    // 4. Mediana móvil
     _buffer.add(speedKmh);
     if (_buffer.length > bufferSize) _buffer.removeAt(0);
-
     final median = _median(_buffer);
 
-    // ── 5. EMA ────────────────────────────────────────────────
-    if (_emaValue == null || _buffer.length < 2) {
+    // 5. EMA; si frena fuerte (>50 %) o se detiene, seguir la mediana al instante
+    final ema = _emaValue;
+    if (ema == null || median == 0.0 || median < ema * 0.5) {
       _emaValue = median;
     } else {
-      _emaValue = emaAlpha * median + (1 - emaAlpha) * _emaValue!;
+      _emaValue = emaAlpha * median + (1 - emaAlpha) * ema;
     }
 
-    _prevSample = sample;
-    return _emaValue;
+    _lastValidAt = sample.timestamp;
+    return _emaValue!;
   }
 
   /// Limpia el estado interno (nueva misión).
   void reset() {
     _buffer.clear();
     _prevSample = null;
+    _lastValidAt = null;
     _emaValue = null;
   }
 
   // ── Privado ───────────────────────────────────────────────────
 
-  /// Devuelve null si la última muestra tiene más de 3 s.
-  double? _checkTimeout(SpeedSample current) {
-    if (_prevSample == null) return null;
-    final dt = current.timestamp
-        .difference(_prevSample!.timestamp)
-        .inMilliseconds / 1000.0;
-    return dt > 3.0 ? null : _emaValue;
-  }
-
   /// Velocidad cruda en m/s: prefiere Doppler si es válido,
   /// sino usa distancia/tiempo con Haversine.
-  double? _rawSpeedMs(
-      SpeedSample s, SpeedSample? prev, double? dtSec) {
-    // Doppler válido
-    if (s.speedMs >= 0 && s.speedAccuracyMs < 2.0) {
+  double? _rawSpeedMs(SpeedSample s, SpeedSample? prev, double? dtSec) {
+    if (s.speedMs >= 0 && (s.speedAccuracyMs <= 0 || s.speedAccuracyMs < 2.0)) {
       return s.speedMs;
     }
-    // Respaldo distancia/tiempo
     if (prev != null && dtSec != null && dtSec > 0) {
       final dist = _haversine(s.lat, s.lng, prev.lat, prev.lng);
       return dist / dtSec;
     }
-    // Solo Doppler sin filtro de precisión si no hay prev
-    if (s.speedMs >= 0) return s.speedMs;
-    return null;
-  }
-
-  double? _prevRawSpeedMs(SpeedSample s) {
     if (s.speedMs >= 0) return s.speedMs;
     return null;
   }

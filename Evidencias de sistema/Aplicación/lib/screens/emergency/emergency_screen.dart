@@ -173,7 +173,7 @@ class _EmergencyScreenState extends State<EmergencyScreen>
       lng:             pos.longitude,
     );
     final estimatedKmh = _speedEstimator.addSample(sample);
-    final speedToUse   = estimatedKmh ?? _lastPublishedSpeedKmh;
+    final speedToUse   = estimatedKmh;
 
     setState(() {
       _miUbicacion  = latLng;
@@ -204,8 +204,7 @@ class _EmergencyScreenState extends State<EmergencyScreen>
 
     // ── Task 6: telemetría con velocidad filtrada ─────────────
     if (_state == EmergencyState.transmitting && _user != null) {
-      // Si addSample devuelve null, publicar el último valor válido (no null)
-      if (estimatedKmh != null) _lastPublishedSpeedKmh = estimatedKmh;
+      _lastPublishedSpeedKmh = estimatedKmh;
 
       _rtdb
           .ref('${AppConstants.rtdbActiveEmergencies}/${_user!.uid}/current_location')

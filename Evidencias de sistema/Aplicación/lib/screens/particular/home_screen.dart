@@ -17,6 +17,7 @@ import '../../services/monitoring_controller.dart';
 import '../../services/permission_status_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/readiness_state.dart';
+import '../../services/speed_estimator.dart';
 import '../../models/user_model.dart';
 import '../../models/location_model.dart';
 import '../../widgets/alert_overlay.dart';
@@ -49,6 +50,7 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
 
   LatLng?  _miUbicacion;
   double   _miVelocidadKmh = 0;
+  final _speedEstimator = SpeedEstimator();
 
   // ── Estado de alerta (alimentado por MonitoringController) ────
   bool    _alertaActiva = false;
@@ -124,7 +126,14 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
       if (mounted) {
         setState(() {
           _miUbicacion    = latLng;
-          _miVelocidadKmh = pos.speed * 3.6;
+          _miVelocidadKmh = _speedEstimator.addSample(SpeedSample(
+            timestamp:       pos.timestamp,
+            speedMs:         pos.speed,
+            speedAccuracyMs: pos.speedAccuracy,
+            accuracyM:       pos.accuracy,
+            lat:             pos.latitude,
+            lng:             pos.longitude,
+          ));
         });
         _mapCtrl?.animateCamera(CameraUpdate.newLatLng(latLng));
       }

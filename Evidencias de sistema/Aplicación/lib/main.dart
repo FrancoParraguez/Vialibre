@@ -107,16 +107,17 @@ Future<String?> _authGuard(BuildContext context, GoRouterState state) async {
   final onProtected = [AppConstants.routeEmergency, AppConstants.routeAdmin]
       .contains(loc);
 
+  // Permitir siempre el acceso explícito a /login, /register y /privacy-notice
+  // para que el botón "Iniciar sesión" funcione de inmediato sin bloqueos ni rebotes.
+  if (onAuth || loc == AppConstants.routePrivacyNotice) {
+    return null;
+  }
+
   // ── Caso 1: Usuario sin cuenta iniciada (invitado / anónimo) ──
   if (!authSvc.isRegisteredUser) {
     // Bloquear acceso no autorizado a rutas institucionales
     if (onProtected) {
       return AppConstants.routeLogin;
-    }
-
-    // Permitir login, registro y aviso de privacidad libremente
-    if (onAuth || loc == AppConstants.routePrivacyNotice) {
-      return null;
     }
 
     // En /home, verificar aceptación local del aviso de privacidad
@@ -156,10 +157,6 @@ Future<String?> _authGuard(BuildContext context, GoRouterState state) async {
       return AppConstants.routeHomeParticular;
     }
 
-    if (loc == AppConstants.routePrivacyNotice) {
-      return null;
-    }
-
     final localVersion = await profileRepo.getLocalPrivacyNoticeVersion();
     final remoteVersion = user.privacyNoticeVersion ?? 0;
     final effectiveVersion =
@@ -167,10 +164,6 @@ Future<String?> _authGuard(BuildContext context, GoRouterState state) async {
 
     if (effectiveVersion < AppConstants.privacyNoticeCurrentVersion) {
       return AppConstants.routePrivacyNotice;
-    }
-
-    if (onAuth) {
-      return AppConstants.routeHomeParticular;
     }
   } catch (_) {
     // Si falla la lectura de perfil en una ruta protegida, exigir login

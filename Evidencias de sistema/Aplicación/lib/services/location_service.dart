@@ -145,7 +145,7 @@ class LocationService {
           accuracy: LocationAccuracy.high,
           intervalDuration: const Duration(
               milliseconds: AppConstants.locationUpdateIntervalMs),
-          distanceFilter: 5,
+          distanceFilter: 0,
           foregroundNotificationConfig: const ForegroundNotificationConfig(
             notificationText: 'Baliza de emergencia activa',
             notificationTitle: 'Vía Libre',
@@ -158,7 +158,7 @@ class LocationService {
       return Geolocator.getPositionStream(
         locationSettings: AppleSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 5,
+          distanceFilter: 0,
           allowBackgroundLocationUpdates: true,
           showBackgroundLocationIndicator: true,
           pauseLocationUpdatesAutomatically: false,
@@ -168,7 +168,7 @@ class LocationService {
       return Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 5,
+          distanceFilter: 0,
         ),
       );
     }
