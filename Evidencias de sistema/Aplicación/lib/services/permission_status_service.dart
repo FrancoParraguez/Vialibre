@@ -30,10 +30,19 @@ class PermissionStatusService {
     final ItemStatus notificationsStatus;
 
     if (kIsWeb) {
-      // En web ninguno de los tres permisos nativo está disponible.
-      locationStatus = ItemStatus.unavailable;
-      backgroundStatus = ItemStatus.unavailable;
-      notificationsStatus = ItemStatus.unavailable;
+      // En navegador web verificamos el permiso de geolocalización del navegador;
+      // la pestaña activa gestiona la ejecución y las alertas visuales en pantalla.
+      LocationPermission perm = LocationPermission.denied;
+      try {
+        perm = await Geolocator.checkPermission();
+      } catch (_) {}
+
+      final bool locationGranted = perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always;
+
+      locationStatus = locationGranted ? ItemStatus.ok : ItemStatus.missing;
+      backgroundStatus = ItemStatus.ok;
+      notificationsStatus = ItemStatus.ok;
     } else {
       // ── 1. locationRealtime ─────────────────────────────────
       final bool gpsEnabled = await Geolocator.isLocationServiceEnabled();

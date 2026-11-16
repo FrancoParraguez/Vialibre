@@ -17,6 +17,7 @@ import '../../services/monitoring_controller.dart';
 import '../../services/permission_status_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/readiness_state.dart';
+import '../../services/speed_estimator.dart';
 import '../../models/user_model.dart';
 import '../../models/location_model.dart';
 import '../../widgets/alert_overlay.dart';
@@ -49,6 +50,7 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
 
   LatLng?  _miUbicacion;
   double   _miVelocidadKmh = 0;
+  final _speedEstimator = SpeedEstimator();
 
   // ── Estado de alerta (alimentado por MonitoringController) ────
   bool    _alertaActiva = false;
@@ -82,7 +84,11 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
   }
 
   Future<void> _init() async {
-    await _notifSvc.initialize();
+    try {
+      await _notifSvc.initialize();
+    } catch (_) {
+      // Ignorar si FCM no está disponible en el entorno web actual
+    }
 
     if (_authSvc.isRegisteredUser) {
       try {
@@ -120,7 +126,14 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
       if (mounted) {
         setState(() {
           _miUbicacion    = latLng;
-          _miVelocidadKmh = pos.speed * 3.6;
+          _miVelocidadKmh = _speedEstimator.addSample(SpeedSample(
+            timestamp:       pos.timestamp,
+            speedMs:         pos.speed,
+            speedAccuracyMs: pos.speedAccuracy,
+            accuracyM:       pos.accuracy,
+            lat:             pos.latitude,
+            lng:             pos.longitude,
+          ));
         });
         _mapCtrl?.animateCamera(CameraUpdate.newLatLng(latLng));
       }
@@ -217,7 +230,11 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
     if (!mounted) return;
     switch (result) {
       case PermissionResult.granted:
-        // Reinicializar el MonitoringController con los nuevos permisos
+        // Actualizar estado del panel de inmediato y arrancar monitoreo
+        final newReadiness = await _permissionStatusSvc.evaluate();
+        if (mounted) {
+          setState(() => _readiness = newReadiness);
+        }
         await _monitoringCtrl.initialize();
         if (_monitoringCtrl.state == MonitoringState.listo) {
           await _monitoringCtrl.startMonitoring();
@@ -229,6 +246,10 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
             content: Text('Ubicación concedida. Activa las notificaciones para alertas hands-free.'),
           ),
         );
+        final newReadiness = await _permissionStatusSvc.evaluate();
+        if (mounted) {
+          setState(() => _readiness = newReadiness);
+        }
         await _monitoringCtrl.initialize();
         if (_monitoringCtrl.state == MonitoringState.listo) {
           await _monitoringCtrl.startMonitoring();
@@ -242,17 +263,22 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
           showDialog<void>(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: const Text('Permiso denegado permanentemente'),
+              title: const Text('Permiso de ubicación bloqueado'),
               content: const Text(
-                'Ve a Configuración > Permisos y activa la ubicación para Vía Libre.',
+                'Habilita el permiso de ubicación en el ícono de permisos junto a la barra de direcciones del navegador o en Configuración > Permisos.',
               ),
               actions: [
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(0, 44),
+                  ),
                   onPressed: () async {
                     Navigator.pop(ctx);
-                    await permSvc.openAppSettings();
+                    try {
+                      await permSvc.openAppSettings();
+                    } catch (_) {}
                   },
-                  child: const Text('Abrir ajustes'),
+                  child: const Text('Entendido'),
                 ),
               ],
             ),
@@ -436,7 +462,6 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
     _permissionStatusSvc.stopWatching();
     _monitoringCtrl.dispose();
     _locationSvc.dispose();
-    _mapCtrl?.dispose();
     super.dispose();
   }
 }

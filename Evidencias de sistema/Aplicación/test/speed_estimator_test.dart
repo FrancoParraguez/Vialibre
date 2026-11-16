@@ -106,8 +106,8 @@ void main() {
       speedAccMs: 0.5,
       accuracy: 60.0, // > 50 m
     ));
-    // Sin muestras previas válidas → null
-    expect(result, isNull);
+    // Sin muestras previas válidas → 0 (nunca un valor viejo)
+    expect(result, 0.0);
   });
 
   test('6. reset() limpia el estado', () {

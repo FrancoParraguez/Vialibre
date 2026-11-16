@@ -110,6 +110,8 @@ class _PermissionStatusPanelState extends State<PermissionStatusPanel> {
             child: ElevatedButton(
               onPressed: widget.onRequestPermissions,
               style: ElevatedButton.styleFrom(
+                minimumSize: const Size(0, 32),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 textStyle: const TextStyle(fontSize: 12),
               ),
