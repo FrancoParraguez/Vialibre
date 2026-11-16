@@ -17,7 +17,6 @@ import 'geofencing_service.dart';
 import 'location_service.dart';
 import 'notification_service.dart';
 import 'permission_status_service.dart';
-import 'speed_estimator.dart';
 
 // ── Estados del monitoreo ─────────────────────────────────────────
 enum MonitoringState {
@@ -62,7 +61,6 @@ class MonitoringController {
   // ── Estado interno ────────────────────────────────────────────
   /// Última posición GPS del conductor particular (solo en memoria, R7.1).
   LocationModel? _particularLocation;
-  final SpeedEstimator _speedEstimator = SpeedEstimator();
 
   /// Muestras de distancia para el cálculo de tendencia (últimas 5).
   final List<double> _distanciasMuestras = [];
@@ -119,7 +117,7 @@ class MonitoringController {
   }
 
   // ── stopMonitoring ────────────────────────────────────────────
-  /// Detiene el monitoreo y cancela todas las suscripciones.
+  /// Detiene el monitoreo, apaga el stream GPS nativo y cancela todas las suscripciones.
   void stopMonitoring() {
     _posSub?.cancel();
     _posSub = null;
@@ -128,6 +126,7 @@ class MonitoringController {
     _emergencyIdsSub?.cancel();
     _emergencyIdsSub = null;
 
+    _locationSvc.stopStream();
     _notifSvc.cancelarAlertas();
     _distanciasMuestras.clear();
     _yaAlertado = false;
@@ -159,14 +158,7 @@ class MonitoringController {
       ownerId: 'particular',
       lat: pos.latitude,
       lng: pos.longitude,
-      speedKmh: _speedEstimator.addSample(SpeedSample(
-        timestamp:       pos.timestamp,
-        speedMs:         pos.speed,
-        speedAccuracyMs: pos.speedAccuracy,
-        accuracyM:       pos.accuracy,
-        lat:             pos.latitude,
-        lng:             pos.longitude,
-      )),
+      speedKmh: pos.speed * 3.6,
       heading: pos.heading,
       accuracy: pos.accuracy,
       timestamp: DateTime.now(),
