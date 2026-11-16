@@ -28,14 +28,24 @@ class LocationService {
   // UID del conductor cuya ubicación se está publicando en RTDB.
   // null = no se está publicando.
   String? _publishingOwnerId;
+  bool _foregroundServiceActive = false;
 
   // ── Arrancar el stream GPS (llamar en initState) ───────────────
   /// Inicia la escucha del GPS si no estaba activa.
-  /// Seguro llamar varias veces.
-  Future<void> startStream() async {
-    if (_gpsSubscription != null) return; // ya activo
+  /// [enableBackground] activa WakeLock/ForegroundService únicamente
+  /// durante una transmisión de emergencia activa para no drenar batería.
+  Future<void> startStream({bool enableBackground = false}) async {
+    if (_gpsSubscription != null &&
+        _foregroundServiceActive == enableBackground) {
+      return; // ya activo en el mismo modo
+    }
 
-    _gpsSubscription = _buildGpsStream().listen(
+    await _gpsSubscription?.cancel();
+    _gpsSubscription = null;
+    _foregroundServiceActive = enableBackground;
+
+    _gpsSubscription =
+        _buildGpsStream(enableBackground: enableBackground).listen(
       (pos) {
         // Distribuir a todos los consumidores del broadcast
         if (!_posCtrl.isClosed) _posCtrl.add(pos);
@@ -62,6 +72,15 @@ class LocationService {
     );
   }
 
+  // ── Detener el stream GPS por completo (libera hardware y WakeLock) ──
+  Future<void> stopStream() async {
+    _publishingOwnerId = null;
+    _foregroundServiceActive = false;
+    await _gpsSubscription?.cancel();
+    _gpsSubscription = null;
+    debugPrint('[LocationService] Stream GPS detenido por completo');
+  }
+
   // ── Stream público (broadcast) ────────────────────────────────
   Stream<Position> get positionStream => _posCtrl.stream;
 
@@ -70,19 +89,23 @@ class LocationService {
     final hasPermission = await requestPermissions();
     if (!hasPermission) throw Exception('Permiso de ubicación denegado');
 
-    // Asegurar que el stream GPS esté corriendo
-    await startStream();
+    // Asegurar que el stream GPS esté corriendo con soporte de emergencia activa
+    await startStream(enableBackground: true);
 
     _publishingOwnerId = ownerId;
     debugPrint('[LocationService] Publicando ubicación para $ownerId');
   }
 
-  // ── Detener publicación a RTDB (NO detiene el stream GPS) ─────
+  // ── Detener publicación a RTDB y liberar WakeLock de emergencia ──
   /// Sincrónico a propósito: no hace await sobre nada que pueda colgar.
   /// El nodo de RTDB se elimina en segundo plano.
   void stopPublishingLocation(String ownerId) {
     _publishingOwnerId = null;
     debugPrint('[LocationService] Detenida publicación para $ownerId');
+    if (_foregroundServiceActive) {
+      // Bajar de modo foreground-service con WakeLock a GPS normal de pantalla
+      startStream(enableBackground: false);
+    }
     // Limpiar nodo RTDB en background (fire-and-forget)
     _db
         .ref('${AppConstants.rtdbActiveLocations}/$ownerId')
@@ -138,37 +161,39 @@ class LocationService {
   }
 
   // ── Construir stream GPS según plataforma ─────────────────────
-  Stream<Position> _buildGpsStream() {
+  Stream<Position> _buildGpsStream({bool enableBackground = false}) {
     if (!kIsWeb && Platform.isAndroid) {
       return Geolocator.getPositionStream(
         locationSettings: AndroidSettings(
           accuracy: LocationAccuracy.high,
           intervalDuration: const Duration(
               milliseconds: AppConstants.locationUpdateIntervalMs),
-          distanceFilter: 0,
-          foregroundNotificationConfig: const ForegroundNotificationConfig(
-            notificationText: 'Baliza de emergencia activa',
-            notificationTitle: 'Vía Libre',
-            enableWakeLock: true,
-            enableWifiLock: true,
-          ),
+          distanceFilter: 5,
+          foregroundNotificationConfig: enableBackground
+              ? const ForegroundNotificationConfig(
+                  notificationText: 'Baliza de emergencia activa',
+                  notificationTitle: 'Vía Libre',
+                  enableWakeLock: true,
+                  enableWifiLock: true,
+                )
+              : null,
         ),
       );
     } else if (!kIsWeb && Platform.isIOS) {
       return Geolocator.getPositionStream(
         locationSettings: AppleSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 0,
-          allowBackgroundLocationUpdates: true,
-          showBackgroundLocationIndicator: true,
-          pauseLocationUpdatesAutomatically: false,
+          distanceFilter: 5,
+          allowBackgroundLocationUpdates: enableBackground,
+          showBackgroundLocationIndicator: enableBackground,
+          pauseLocationUpdatesAutomatically: !enableBackground,
         ),
       );
     } else {
       return Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          distanceFilter: 0,
+          distanceFilter: 5,
         ),
       );
     }
@@ -177,8 +202,11 @@ class LocationService {
   // ── Liberar recursos ──────────────────────────────────────────
   void dispose() {
     _publishingOwnerId = null;
+    _foregroundServiceActive = false;
     _gpsSubscription?.cancel();
     _gpsSubscription = null;
-    _posCtrl.close();
+    if (!_posCtrl.isClosed) {
+      _posCtrl.close();
+    }
   }
 }

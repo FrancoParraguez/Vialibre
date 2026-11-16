@@ -4,7 +4,11 @@
 // el conductor entra en el radio de un vehículo de emergencia activo.
 
 import 'dart:async';
+import 'dart:io' show exit;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../core/constants.dart';
@@ -17,7 +21,6 @@ import '../../services/monitoring_controller.dart';
 import '../../services/permission_status_service.dart';
 import '../../services/permission_service.dart';
 import '../../services/readiness_state.dart';
-import '../../services/speed_estimator.dart';
 import '../../models/user_model.dart';
 import '../../models/location_model.dart';
 import '../../widgets/alert_overlay.dart';
@@ -31,7 +34,8 @@ class HomeParticularScreen extends StatefulWidget {
   State<HomeParticularScreen> createState() => _HomeParticularScreenState();
 }
 
-class _HomeParticularScreenState extends State<HomeParticularScreen> {
+class _HomeParticularScreenState extends State<HomeParticularScreen>
+    with WidgetsBindingObserver {
   final _authSvc     = AuthService();
   final _locationSvc = LocationService();
   final _geofenceSvc = GeofencingService();
@@ -50,10 +54,10 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
 
   LatLng?  _miUbicacion;
   double   _miVelocidadKmh = 0;
-  final _speedEstimator = SpeedEstimator();
 
   // ── Estado de alerta (alimentado por MonitoringController) ────
   bool    _alertaActiva = false;
+  bool    _appTerminated = false;
   double? _distanciaAlerta;
   double? _radioAlerta;
   AlertLevel _nivelAlerta = AlertLevel.anticipation;
@@ -73,6 +77,7 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _permissionStatusSvc = PermissionStatusService();
     _monitoringCtrl = MonitoringController(
       _locationSvc,
@@ -81,6 +86,14 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
       _permissionStatusSvc,
     );
     _init();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      // Al cerrar la tarea desde el sistema operativo, apagar todos los servicios y GPS
+      _shutdownAllProcesses();
+    }
   }
 
   Future<void> _init() async {
@@ -126,14 +139,7 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
       if (mounted) {
         setState(() {
           _miUbicacion    = latLng;
-          _miVelocidadKmh = _speedEstimator.addSample(SpeedSample(
-            timestamp:       pos.timestamp,
-            speedMs:         pos.speed,
-            speedAccuracyMs: pos.speedAccuracy,
-            accuracyM:       pos.accuracy,
-            lat:             pos.latitude,
-            lng:             pos.longitude,
-          ));
+          _miVelocidadKmh = pos.speed * 3.6;
         });
         _mapCtrl?.animateCamera(CameraUpdate.newLatLng(latLng));
       }
@@ -304,112 +310,244 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
     }
   }
 
+  // ── Cierre total de servicios y procesos en segundo plano ─────
+  Future<void> _shutdownAllProcesses() async {
+    await _readinessSub?.cancel();
+    _readinessSub = null;
+    await _monitoringStateSub?.cancel();
+    _monitoringStateSub = null;
+    await _mapPosSub?.cancel();
+    _mapPosSub = null;
+    await _geofenceSub?.cancel();
+    _geofenceSub = null;
+    await _emergencyIdsSub?.cancel();
+    _emergencyIdsSub = null;
+
+    _permissionStatusSvc.stopWatching();
+    _monitoringCtrl.stopMonitoring();
+    await _locationSvc.stopStream();
+    await _notifSvc.cancelarAlertas();
+
+    if (!kIsWeb) {
+      try {
+        await FlutterForegroundTask.stopService();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _confirmAndExitApp() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Finalizar aplicación'),
+        content: const Text(
+          '¿Deseas cerrar Vía Libre por completo?\n\n'
+          'Se detendrán el GPS, las alertas y todos los procesos en segundo plano para no consumir batería.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: AppColors.onPrimary,
+              minimumSize: const Size(0, 44),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Finalizar y salir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    await _shutdownAllProcesses();
+
+    if (!kIsWeb) {
+      await SystemNavigator.pop();
+      exit(0);
+    } else if (mounted) {
+      setState(() {
+        _alertaActiva = false;
+        _miVelocidadKmh = 0;
+        _appTerminated = true;
+      });
+    }
+  }
+
   // ── Build ─────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+
+    if (_appTerminated) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.power_settings_new,
+                        size: 56,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Aplicación finalizada',
+                        style: tt.titleLarge,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'El GPS, el monitoreo en segundo plano y las conexiones en tiempo real han sido detenidos por completo.',
+                        style: tt.bodyMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      FilledButton.icon(
+                        onPressed: () {
+                          setState(() => _appTerminated = false);
+                          _init();
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Volver a iniciar monitoreo'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     final initialPos = _miUbicacion ?? const LatLng(-33.0472, -71.6127);
 
     final appBarBg = _alertaActiva ? _nivelAlerta.color  : AppColors.background;
     final appBarFg = _alertaActiva ? _nivelAlerta.onColor : AppColors.primary;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: appBarBg,
-        foregroundColor: appBarFg,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        title: Text(
-          _alertaActiva
-              ? (_nivelAlerta == AlertLevel.critical
-                  ? '🚨 EMERGENCIA INMINENTE'
-                  : '⚠️ EMERGENCIA CERCANA')
-              : AppConstants.appName,
-          style: TextStyle(
-            fontWeight: _alertaActiva ? FontWeight.w900 : FontWeight.w600,
-            color: appBarFg,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _confirmAndExitApp();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: appBarBg,
+          foregroundColor: appBarFg,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          title: Text(
+            _alertaActiva
+                ? (_nivelAlerta == AlertLevel.critical
+                    ? '🚨 EMERGENCIA INMINENTE'
+                    : '⚠️ EMERGENCIA CERCANA')
+                : AppConstants.appName,
+            style: TextStyle(
+              fontWeight: _alertaActiva ? FontWeight.w900 : FontWeight.w600,
+              color: appBarFg,
+            ),
           ),
-        ),
-        actions: [
-          if (_miVelocidadKmh > 0)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: Chip(
+          actions: [
+            if (_miVelocidadKmh > 0)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Chip(
+                    label: Text(
+                      '${_miVelocidadKmh.toStringAsFixed(0)} km/h',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: appBarFg,
+                      ),
+                    ),
+                    backgroundColor: appBarFg.withValues(alpha: 0.15),
+                  ),
+                ),
+              ),
+            if (_user == null)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: TextButton.icon(
+                  onPressed: () => context.go(AppConstants.routeLogin),
+                  icon: Icon(Icons.login, size: 18, color: appBarFg),
                   label: Text(
-                    '${_miVelocidadKmh.toStringAsFixed(0)} km/h',
+                    'Iniciar sesión',
                     style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
                       color: appBarFg,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  backgroundColor: appBarFg.withValues(alpha: 0.15),
                 ),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.logout),
+                color: appBarFg,
+                tooltip: 'Cerrar sesión (${_user!.nombre})',
+                onPressed: _logout,
               ),
-            ),
-          if (_user == null)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TextButton.icon(
-                onPressed: () => context.go(AppConstants.routeLogin),
-                icon: Icon(Icons.login, size: 18, color: appBarFg),
-                label: Text(
-                  'Iniciar sesión',
-                  style: TextStyle(
-                    color: appBarFg,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            )
-          else
             IconButton(
-              icon: const Icon(Icons.logout),
-              color: appBarFg,
-              tooltip: 'Cerrar sesión (${_user!.nombre})',
-              onPressed: _logout,
+              icon: const Icon(Icons.power_settings_new),
+              color: _alertaActiva ? appBarFg : AppColors.error,
+              tooltip: 'Finalizar y cerrar aplicación',
+              onPressed: _confirmAndExitApp,
             ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          GoogleMap(
-            onMapCreated: (ctrl) => _mapCtrl = ctrl,
-            initialCameraPosition: CameraPosition(target: initialPos, zoom: 15),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: true,
-            zoomControlsEnabled: false,
-            markers: Set<Marker>.of(_markers.values),
-          ),
-
-          if (_alertaActiva)
-            AlertOverlay(
-              activo: _alertaActiva,
-              nivel: _nivelAlerta,
-              distanciaMetros: _distanciaAlerta,
-              radioMetros: _radioAlerta,
+          ],
+        ),
+        body: Stack(
+          children: [
+            GoogleMap(
+              onMapCreated: (ctrl) => _mapCtrl = ctrl,
+              initialCameraPosition: CameraPosition(target: initialPos, zoom: 15),
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
+              zoomControlsEnabled: false,
+              markers: Set<Marker>.of(_markers.values),
             ),
 
-          // Panel de estado de permisos — siempre visible en la parte inferior
-          Positioned(
-            bottom: 80,
-            left: 16,
-            right: 16,
-            child: PermissionStatusPanel(
-              readiness: _readiness,
-              onRequestPermissions: _requestMissingPermissions,
-            ),
-          ),
+            if (_alertaActiva)
+              AlertOverlay(
+                activo: _alertaActiva,
+                nivel: _nivelAlerta,
+                distanciaMetros: _distanciaAlerta,
+                radioMetros: _radioAlerta,
+              ),
 
-          Positioned(
-            bottom: 16,
-            left: 16,
-            right: 16,
-            child: _buildStatusCard(tt),
-          ),
-        ],
+            // Panel de estado de permisos — siempre visible en la parte inferior
+            Positioned(
+              bottom: 80,
+              left: 16,
+              right: 16,
+              child: PermissionStatusPanel(
+                readiness: _readiness,
+                onRequestPermissions: _requestMissingPermissions,
+              ),
+            ),
+
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: _buildStatusCard(tt),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -454,6 +592,7 @@ class _HomeParticularScreenState extends State<HomeParticularScreen> {
   // ── dispose ───────────────────────────────────────────────────
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _readinessSub?.cancel();
     _monitoringStateSub?.cancel();
     _mapPosSub?.cancel();

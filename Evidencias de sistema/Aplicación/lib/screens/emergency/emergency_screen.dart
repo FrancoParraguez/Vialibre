@@ -13,9 +13,13 @@
 //   (o permission_denied con reintento / abrir ajustes)
 
 import 'dart:async';
+import 'dart:io' show exit;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:uuid/uuid.dart';
@@ -118,6 +122,24 @@ class _EmergencyScreenState extends State<EmergencyScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      final uid = _user?.uid;
+      if (uid != null && _state == EmergencyState.transmitting) {
+        _locationSvc.stopPublishingLocation(uid);
+        _rtdb.ref('${AppConstants.rtdbActiveEmergencies}/$uid').remove().catchError((_) {});
+      }
+      _posSub?.cancel();
+      _alertCountSub?.cancel();
+      _perfilSub?.cancel();
+      _locationSvc.stopStream();
+      if (!kIsWeb) {
+        try {
+          FlutterForegroundTask.stopService();
+        } catch (_) {}
+      }
+      return;
+    }
+
     if (state == AppLifecycleState.resumed &&
         _state == EmergencyState.transmitting) {
       _permissionSvc.revalidatePermissions().then((ok) {
@@ -173,7 +195,7 @@ class _EmergencyScreenState extends State<EmergencyScreen>
       lng:             pos.longitude,
     );
     final estimatedKmh = _speedEstimator.addSample(sample);
-    final speedToUse   = estimatedKmh;
+    final speedToUse   = estimatedKmh ?? _lastPublishedSpeedKmh;
 
     setState(() {
       _miUbicacion  = latLng;
@@ -204,7 +226,8 @@ class _EmergencyScreenState extends State<EmergencyScreen>
 
     // ── Task 6: telemetría con velocidad filtrada ─────────────
     if (_state == EmergencyState.transmitting && _user != null) {
-      _lastPublishedSpeedKmh = estimatedKmh;
+      // Si addSample devuelve null, publicar el último valor válido (no null)
+      if (estimatedKmh != null) _lastPublishedSpeedKmh = estimatedKmh;
 
       _rtdb
           .ref('${AppConstants.rtdbActiveEmergencies}/${_user!.uid}/current_location')
@@ -667,8 +690,8 @@ class _EmergencyScreenState extends State<EmergencyScreen>
     );
   }
 
-  Future<void> _logout() async {
-    final uid    = _user?.uid;
+  Future<void> _shutdownEmergencyProcesses() async {
+    final uid     = _user?.uid;
     final emergId = _emergenciaActivaId;
     if (uid != null && _state == EmergencyState.transmitting) {
       _locationSvc.stopPublishingLocation(uid);
@@ -682,11 +705,38 @@ class _EmergencyScreenState extends State<EmergencyScreen>
         }).catchError((_) {});
       }
     }
-    _alertCountSub?.cancel();
+    await _posSub?.cancel();
+    _posSub = null;
+    await _alertCountSub?.cancel();
+    _alertCountSub = null;
+    await _perfilSub?.cancel();
+    _perfilSub = null;
+    await _locationSvc.stopStream();
+
+    if (!kIsWeb) {
+      try {
+        await FlutterForegroundTask.stopService();
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _logout() async {
+    await _shutdownEmergencyProcesses();
     try { await _authSvc.signOut(); } catch (e) {
       debugPrint('[Logout] signOut error: $e');
     }
     if (mounted) context.go(AppConstants.routeLogin);
+  }
+
+  Future<void> _exitApp() async {
+    await _shutdownEmergencyProcesses();
+    if (!kIsWeb) {
+      await SystemNavigator.pop();
+      exit(0);
+    } else {
+      try { await _authSvc.signOut(); } catch (_) {}
+      if (mounted) context.go(AppConstants.routeHomeParticular);
+    }
   }
 
   // ── Helpers UI ─────────────────────────────────────────────────
@@ -750,7 +800,10 @@ class _EmergencyScreenState extends State<EmergencyScreen>
             icon:    Icon(Icons.account_circle_outlined, color: appBarFg),
             tooltip: 'Datos del conductor',
             color:   AppColors.surface,
-            onSelected: (value) { if (value == 'logout') _logout(); },
+            onSelected: (value) {
+              if (value == 'logout') _logout();
+              if (value == 'exit') _exitApp();
+            },
             itemBuilder: (_) => [
               PopupMenuItem<String>(
                 enabled: false,
@@ -804,9 +857,17 @@ class _EmergencyScreenState extends State<EmergencyScreen>
               const PopupMenuItem<String>(
                 value: 'logout',
                 child: Row(children: [
-                  Icon(Icons.logout, size: 18, color: AppColors.error),
+                  Icon(Icons.logout, size: 18, color: AppColors.textPrimary),
                   SizedBox(width: 10),
-                  Text('Cerrar sesión',
+                  Text('Cerrar sesión'),
+                ]),
+              ),
+              const PopupMenuItem<String>(
+                value: 'exit',
+                child: Row(children: [
+                  Icon(Icons.power_settings_new, size: 18, color: AppColors.error),
+                  SizedBox(width: 10),
+                  Text('Finalizar y salir',
                       style: TextStyle(color: AppColors.error)),
                 ]),
               ),
