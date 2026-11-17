@@ -81,11 +81,25 @@ Donde:
 
 La distancia entre los dos vehículos se calcula con la **fórmula de Haversine**, que mide distancias exactas sobre la superficie terrestre considerando su curvatura.
 
----
-## Metodología de Desarrollo y Gestión del Proyecto
+## Metodología de Desarrollo
 
-El desarrollo del proyecto **Vía Libre** se rige por un marco de trabajo ágil adaptado, fundamentado en iteraciones quincenales fijas orientadas a la entrega continua de incrementos funcionales de software. La planificación se enfoca en resolver los riesgos técnicos críticos y entregar valor funcional temprano mediante especificaciones rigurosas de ingeniería de software.
+El proyecto utiliza **Scrum** como marco de trabajo ágil, organizado en **3 sprints de 2 semanas** con ceremonias formales: **Sprint Planning**, **Daily Scrum**, **Sprint Review** y **Sprint Retrospective**.
 
+### Justificación del Marco de Trabajo
+Se seleccionó Scrum debido a que el motor de *geofencing* predictivo exigió ciclos continuos de ajuste empírico —calibración de umbrales de velocidad, márgenes de alerta y latencia de notificaciones—, donde la retroalimentación temprana al cierre de cada iteración permitió corregir desviaciones con rapidez. Asimismo, la estructura de un equipo de **2 desarrolladores** y un horizonte de **12 semanas** favoreció la adaptabilidad de un marco ligero frente a procesos tradicionales más rígidos.
+
+El seguimiento operativo diario se complementó con un tablero **Kanban de 4 columnas** (`Por hacer` → `En progreso` → `En revisión` → `Terminado`), garantizando trazabilidad y visibilidad continua sobre el estado de cada tarea dentro del sprint activo.
+
+### Artefactos Generados
+
+* **Product Vision:** Define la problemática central (conductores particulares que no reciben anticipación suficiente para ceder el paso), el segmento de usuarios objetivo, el alcance funcional de la versión `v1.0` y los criterios de éxito medibles, destacando una **latencia de notificación inferior a 2 segundos** y un **tiempo de anticipación promedio de al menos 25 segundos**.
+* **Product Backlog:** Compuesto por **15 historias de usuario** estructuradas en **8 épicas** (*Autenticación, Geofencing, Interfaz Conductor Particular, Interfaz Conductor Emergencia, Panel Admin, Notificaciones, Infraestructura Firebase y Calidad*). Cada historia incorpora criterios de aceptación bajo formato *Given-When-Then* y estimación mediante *story points* en escala Fibonacci, totalizando **62 puntos**.
+* **Sprint Backlog y Definition of Done (DoD):** Desglosa las tareas técnicas de cada iteración con responsable asignado, estimación en horas y estado de avance. La *Definition of Done* exige el cumplimiento estricto de cuatro condiciones para cerrar una historia:
+  1. Código fuente limpio y libre de *warnings*.
+  2. Pruebas unitarias ejecutadas y aprobadas.
+  3. *Pull Request* revisado y aprobado por el otro integrante del equipo.
+  4. Verificación funcional manual en dispositivo físico.
+* **Retrospectivas:** Documentan las métricas de cierre y los acuerdos de mejora continua adoptados al finalizar cada sprint, abordando aspectos de comunicación interna, precisión en las estimaciones y cobertura de pruebas.
 ---
 
 ### 1. Especificación y Estimación de Requerimientos
