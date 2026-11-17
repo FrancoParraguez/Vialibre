@@ -12,6 +12,10 @@ import '../core/constants.dart';
 class UserProfileRepository {
   final FirebaseFirestore _firestore;
 
+  /// Respaldo en memoria para garantizar que la aceptación persista durante
+  /// la sesión actual aunque falle el canal nativo de SharedPreferences.
+  static int _memoryAcceptedVersion = 0;
+
   UserProfileRepository({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
 
@@ -19,16 +23,32 @@ class UserProfileRepository {
   Future<int> getLocalPrivacyNoticeVersion() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getInt(AppConstants.prefPrivacyNoticeAcceptedVersion) ?? 0;
+      final stored =
+          prefs.getInt(AppConstants.prefPrivacyNoticeAcceptedVersion) ?? 0;
+      if (stored > _memoryAcceptedVersion) {
+        _memoryAcceptedVersion = stored;
+      }
+      return _memoryAcceptedVersion;
     } catch (_) {
-      return 0;
+      return _memoryAcceptedVersion;
     }
   }
 
-  /// Guarda localmente en SharedPreferences que el usuario aceptó la versión [version].
+  /// Guarda localmente en SharedPreferences (y en memoria) que el usuario
+  /// aceptó la versión [version].
   Future<void> acknowledgeLocalPrivacyNotice(int version) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(AppConstants.prefPrivacyNoticeAcceptedVersion, version);
+    if (version > _memoryAcceptedVersion) {
+      _memoryAcceptedVersion = version;
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        AppConstants.prefPrivacyNoticeAcceptedVersion,
+        version,
+      );
+    } catch (_) {
+      // Si falla el plugin nativo, _memoryAcceptedVersion permite continuar en la sesión actual.
+    }
   }
 
   /// Devuelve la versión del aviso de privacidad aceptada por el usuario.
@@ -56,19 +76,25 @@ class UserProfileRepository {
   /// Guarda en SharedPreferences y en Firestore (si hay uid válido) que el
   /// usuario aceptó la versión [version] del aviso de privacidad en [DateTime.now()].
   /// Usa SetOptions(merge: true) para no sobreescribir otros campos.
+  /// Si la escritura remota en Firestore falla (ej. reglas de seguridad o red),
+  /// no bloquea el acceso porque la aceptación local ya quedó registrada.
   Future<void> acknowledgePrivacyNotice(String uid, int version) async {
     await acknowledgeLocalPrivacyNotice(version);
     if (uid.isEmpty) return;
 
-    await _firestore
-        .collection(AppConstants.colUsers)
-        .doc(uid)
-        .set(
-          {
-            'privacy_notice_version': version,
-            'privacy_notice_ack_at': DateTime.now().toIso8601String(),
-          },
-          SetOptions(merge: true),
-        );
+    try {
+      await _firestore
+          .collection(AppConstants.colUsers)
+          .doc(uid)
+          .set(
+            {
+              'privacy_notice_version': version,
+              'privacy_notice_ack_at': DateTime.now().toIso8601String(),
+            },
+            SetOptions(merge: true),
+          );
+    } catch (_) {
+      // No bloquear la navegación al mapa si Firestore rechaza la escritura o no hay red.
+    }
   }
 }
