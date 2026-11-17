@@ -237,7 +237,16 @@ active_locations/
 | `vehicles` | `institucion_id` ASC | — |
 
 ---
+## Plan Integral de Pruebas (QA)
 
+El aseguramiento de la calidad de **Vía Libre** abarca tanto la aplicación móvil multiplataforma (**Flutter**) como el panel web administrativo (**Flutter Web**), respaldados por una arquitectura *serverless* en **Firebase**[cite: 8]. El plan de pruebas organiza la validación del sistema en seis niveles[cite: 8]:
+
+* **L1 — Pruebas Unitarias:** Verificación aislada de la lógica de negocio crítica en `GeofencingService` (cálculo de radio dinámico, distancia Haversine e histéresis), `LocationService` y `AuthService`[cite: 8].
+* **L2 — Pruebas de Integración:** Validación de flujos de registro y roles, escritura/limpieza de balizas en Realtime Database, disparo de alertas y reglas de seguridad en Firestore mediante Firebase Emulators[cite: 8].
+* **L3 — Pruebas de Widget / UI:** Comprobación del renderizado condicional de mapas y *overlays* de alerta (`DriverScreen`, `EmergencyScreen`) y validaciones de formularios[cite: 8].
+* **L4 — Pruebas de Rendimiento:** Medición de latencia de notificaciones push (`P95 ≤ 2.000 ms`) y consumo energético en segundo plano (`≤ 15 %` en 60 minutos)[cite: 8].
+* **L5 — Seguridad Básica (OWASP Mobile Top 10):** Auditoría de credenciales y secretos en Git, cifrado HTTPS, ofuscación ProGuard en *release* y control de acceso por rol en Firestore Rules[cite: 8].
+* **L6 — Pruebas de Aceptación (UAT):** Validación end-to-end en dispositivos físicos y entorno *staging* de los flujos críticos de conductores particulares, unidades de emergencia y administración web[cite: 8].
 ## Configuración inicial
 
 ### Prerrequisitos
